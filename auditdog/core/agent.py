@@ -32,15 +32,38 @@ class AuditDogAgent:
         event_type = event.get('event', 'unknown')
         
         if event_type == 'ssh_login_success':
-            print(f"SSH Login: User {event['user']} logged in from {event['ip_address']} using {event['auth_method']}")
+            auth_method = event.get('auth_method', 'unknown method')
+            ip_address = event.get('ip_address', 'unknown IP')
+            user = event.get('user', 'unknown user')
+            
+            print(f"\nSSH Login Detected: User '{user}' logged in from {ip_address}" + 
+                (f" using {auth_method}" if auth_method != 'unknown method' else ""))
+        elif event_type == 'ssh_session_opened':
+            user = event.get('user', 'unknown user')
+            print(f"\nSSH Session Opened: User '{user}'")
         elif event_type == 'ssh_login_failed':
-            print(f"Failed SSH Login: User {event['user']} failed to log in from {event['ip_address']}")
+            user = event.get('user', 'unknown user')
+            ip_address = event.get('ip_address', 'unknown IP')
+            auth_method = event.get('auth_method', 'unknown method')
+            
+            print(f"\nFailed SSH Login: User '{user}' failed to log in from {ip_address}" + 
+                (f" using {auth_method}" if auth_method != 'unknown method' else ""))
         elif event_type == 'ssh_invalid_user':
-            print(f"Invalid SSH User: {event['user']} from {event['ip_address']}")
+            user = event.get('user', 'unknown')
+            ip_address = event.get('ip_address', 'unknown IP')
+            print(f"\nInvalid SSH User: '{user}' from {ip_address}")
         elif event_type == 'ssh_connection_closed':
-            print(f"SSH Connection Closed: {event['ip_address']}")
+            ip_address = event.get('ip_address', 'unknown IP')
+            user = event.get('user', 'unknown user')
+            if user != 'unknown user':
+                print(f"\nSSH Connection Closed: User '{user}' from {ip_address}")
+            else:
+                print(f"\nSSH Connection Closed: {ip_address}")
         else:
-            print(f"Unknown event: {event}")
+            print(f"\nUnknown event: {event}")
+            
+        # Print a separator to make output more readable
+        print("-" * 60)
             
     async def start(self) -> None:
         """Start the agent and all its watchers"""
