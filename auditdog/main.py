@@ -68,12 +68,29 @@ async def main():
     
     # Start the agent
     await agent.start()
+
+    async def cleanup_old_events():
+        while True:
+            for parser in agent.parsers:
+                if hasattr(parser, 'cleanup_old_events'):
+                    parser.cleanup_old_events()
+            await asyncio.sleep(60)  # Clean up every minute
+            
+    cleanup_task = asyncio.create_task(cleanup_old_events())
     
     try:
         # Run forever
         await asyncio.Future()
     finally:
         # Make sure we clean up
+
+        cleanup_task.cancel()
+        try:
+            await cleanup_task
+        except asyncio.CancelledError:
+            pass
+
+        
         await agent.stop()
 
 if __name__ == '__main__':

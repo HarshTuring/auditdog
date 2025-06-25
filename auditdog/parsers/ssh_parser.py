@@ -1,7 +1,8 @@
 import re
-from datetime import datetime
-from typing import Dict, Any, Optional
 import time
+from datetime import datetime, timedelta
+from typing import Dict, Any, Optional
+
 from .base import BaseParser
 
 class SSHParser(BaseParser):
@@ -100,13 +101,20 @@ class SSHParser(BaseParser):
         ]
     }
     
-    # Track recent events to correlate related events
-    SESSION_TIMEOUT = 5  # seconds
+    # Configuration for event deduplication and correlation
+    DEDUP_TIMEOUT = 5  # seconds to consider events as duplicates
     
     def __init__(self, debug=False):
         super().__init__()
         self.debug = debug
-        self._recent_events = {}  # user -> (timestamp, event_data)
+        # Store recent login events by user to avoid duplicates
+        # Structure: user -> {'timestamp': time, 'event': event_data, 'reported': bool}
+        self._recent_logins = {}
+        # Store process IDs seen in logs to help with correlation
+        # Structure: pid -> {'user': user, 'ip': ip, 'method': method}
+        self._pid_info = {}
+        # Store track of already reported users in the current session
+        self._reported_users = set()
         
     def parse(self, log_line: str, metadata: Dict[str, Any] = None) -> Optional[Dict[str, Any]]:
         """
@@ -126,6 +134,10 @@ class SSHParser(BaseParser):
         if metadata is None:
             metadata = {}
             
+        # Extract process ID from the log line if present
+        pid_match = re.search(r'\[\s*(\d+)\]', log_line)
+        current_pid = pid_match.group(1) if pid_match else None
+        
         # Try each event type and its patterns
         for event_type, patterns in self.PATTERNS.items():
             for pattern in patterns:
@@ -135,86 +147,175 @@ class SSHParser(BaseParser):
                         print(f"DEBUG: Matched pattern for {event_type}")
                     
                     event_data = match.groupdict()
+                    user = event_data.get('user', 'unknown').strip('.')  # Remove trailing dots sometimes present
                     
-                    # Fill in defaults for missing fields
-                    if 'auth_method' not in event_data:
-                        event_data['auth_method'] = 'unknown'
+                    # Store timestamp
+                    current_time = time.time()
                     
-                    if 'user' not in event_data:
-                        event_data['user'] = 'unknown'
-                        
-                    if 'ip_address' not in event_data and 'sshd' in log_line:
-                        # Try to extract IP from the log line for sshd entries
-                        ip_match = re.search(r'(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})', log_line)
-                        if ip_match:
-                            event_data['ip_address'] = ip_match.group(1)
-                        else:
-                            event_data['ip_address'] = 'unknown'
-                    
-                    # Add event type
+                    # Handle different event types
                     if event_type == 'accepted':
-                        event_data['event'] = 'ssh_login_success'
-                    elif event_type == 'pam_session':
-                        event_data['event'] = 'ssh_session_opened'
-                        # This might be part of a login sequence, check if we've seen this user recently
-                        self._recent_events[event_data['user']] = (time.time(), event_data)
-                        # This might not be an event we want to report directly
-                        return None
-                    elif event_type == 'systemd_session':
-                        event_data['event'] = 'ssh_login_success'
-                        # Check if we have a recent accepted event for this user
-                        if event_data['user'] in self._recent_events:
-                            recent_time, recent_data = self._recent_events[event_data['user']]
-                            # If this is within our timeout, merge the events
-                            if time.time() - recent_time < self.SESSION_TIMEOUT:
-                                # Take IP from the earlier event if available
-                                if 'ip_address' in recent_data and 'ip_address' not in event_data:
-                                    event_data['ip_address'] = recent_data['ip_address']
-                                # Take authentication method if available
-                                if 'auth_method' in recent_data:
-                                    event_data['auth_method'] = recent_data['auth_method']
-                    elif event_type == 'failed':
-                        event_data['event'] = 'ssh_login_failed'
-                    elif event_type == 'invalid_user':
-                        event_data['event'] = 'ssh_invalid_user'
-                    elif event_type == 'connection_closed':
-                        event_data['event'] = 'ssh_connection_closed'
-                    
-                    # Add metadata
-                    event_data.update(metadata)
-                    
-                    # Parse timestamp if possible
-                    if 'time' in event_data:
-                        try:
-                            # Try ISO format first
-                            if 'T' in event_data['time']:
-                                # Handle ISO 8601 timestamp
-                                # Strip microseconds and timezone for simpler parsing
-                                iso_time = event_data['time'].split('.')[0]
-                                event_data['timestamp'] = datetime.fromisoformat(iso_time)
-                            else:
-                                # Handle traditional syslog format
-                                current_year = datetime.now().year
-                                timestamp = f"{event_data['time']} {current_year}"
-                                event_data['timestamp'] = datetime.strptime(
-                                    timestamp, '%b %d %H:%M:%S %Y'
-                                )
-                        except (ValueError, TypeError):
-                            # Keep the original string if parsing fails
+                        # This is a primary SSH login event
+                        # Store complete information about this login
+                        ip_address = event_data.get('ip_address', 'unknown')
+                        auth_method = event_data.get('auth_method', 'unknown')
+                        
+                        # If we have the PID, store this information for correlation
+                        if current_pid:
+                            self._pid_info[current_pid] = {
+                                'user': user,
+                                'ip': ip_address,
+                                'method': auth_method
+                            }
+                        
+                        # Create the event with complete information
+                        login_event = {
+                            'event': 'ssh_login_success',
+                            'user': user,
+                            'ip_address': ip_address,
+                            'auth_method': auth_method,
+                            'timestamp': self._parse_timestamp(event_data.get('time')),
+                            'source': metadata.get('source', 'unknown')
+                        }
+                        
+                        # Check if this is a duplicate login event
+                        if self._is_duplicate_login(user, current_time):
                             if self.debug:
-                                print(f"DEBUG: Failed to parse timestamp: {event_data['time']}")
+                                print(f"DEBUG: Suppressing duplicate login for user {user}")
+                            return None
+                        
+                        # Store this login and mark as reported
+                        self._recent_logins[user] = {
+                            'timestamp': current_time,
+                            'event': login_event,
+                            'reported': True
+                        }
+                        self._reported_users.add(user)
+                        
+                        return login_event
                     
-                    # Clean up the event data before returning
-                    cleaned_event = {}
-                    for key, value in event_data.items():
-                        # Skip metadata keys or internal keys
-                        if key not in ('hostname', 'time'):
-                            cleaned_event[key] = value
+                    elif event_type in ('pam_session', 'systemd_session'):
+                        # These are secondary events related to a login
+                        # Check if we've already seen a primary event for this user
+                        if self._is_duplicate_login(user, current_time):
+                            if self.debug:
+                                print(f"DEBUG: Skipping secondary event for recently logged in user {user}")
+                            return None
+                        
+                        # If this is from systemd-logind and we haven't reported it yet
+                        if event_type == 'systemd_session' and user not in self._reported_users:
+                            # Try to find correlating information from previous PID records
+                            ip_address = 'unknown'
+                            auth_method = 'unknown'
                             
-                    return cleaned_event
-                    
+                            # Create a more limited login event
+                            login_event = {
+                                'event': 'ssh_login_success',
+                                'user': user,
+                                'ip_address': ip_address,
+                                'auth_method': auth_method,
+                                'timestamp': self._parse_timestamp(event_data.get('time')),
+                                'source': metadata.get('source', 'unknown')
+                            }
+                            
+                            # Store this login and mark as reported
+                            self._recent_logins[user] = {
+                                'timestamp': current_time,
+                                'event': login_event,
+                                'reported': True
+                            }
+                            self._reported_users.add(user)
+                            
+                            # We'll only report this if we don't have better information
+                            # from a primary event
+                            return None
+                            
+                        # Otherwise, we don't need to report these secondary events
+                        return None
+                        
+                    elif event_type == 'failed':
+                        # Failed login attempts
+                        return {
+                            'event': 'ssh_login_failed',
+                            'user': user,
+                            'ip_address': event_data.get('ip_address', 'unknown'),
+                            'auth_method': event_data.get('auth_method', 'unknown'),
+                            'timestamp': self._parse_timestamp(event_data.get('time')),
+                            'source': metadata.get('source', 'unknown')
+                        }
+                        
+                    elif event_type == 'invalid_user':
+                        return {
+                            'event': 'ssh_invalid_user',
+                            'user': user,
+                            'ip_address': event_data.get('ip_address', 'unknown'),
+                            'timestamp': self._parse_timestamp(event_data.get('time')),
+                            'source': metadata.get('source', 'unknown')
+                        }
+                        
+                    elif event_type == 'connection_closed':
+                        return {
+                            'event': 'ssh_connection_closed',
+                            'user': user if user != 'unknown' else None,
+                            'ip_address': event_data.get('ip_address', 'unknown'),
+                            'timestamp': self._parse_timestamp(event_data.get('time')),
+                            'source': metadata.get('source', 'unknown')
+                        }
+                        
         # If we get here, no pattern matched
         if self.debug and ('sshd' in log_line or 'ssh' in log_line):
             print(f"DEBUG: No pattern matched for SSH-related line: {log_line}")
             
         return None
+        
+    def _is_duplicate_login(self, user: str, current_time: float) -> bool:
+        """Check if we've seen a login for this user recently"""
+        if user in self._recent_logins:
+            login_data = self._recent_logins[user]
+            # Check if it's within our deduplication window
+            if current_time - login_data['timestamp'] < self.DEDUP_TIMEOUT:
+                return True
+        return False
+        
+    def _parse_timestamp(self, time_str: Optional[str]) -> Optional[datetime]:
+        """Parse a timestamp string into a datetime object"""
+        if not time_str:
+            return None
+            
+        try:
+            # Try ISO format first
+            if 'T' in time_str:
+                # Handle ISO 8601 timestamp
+                # Strip microseconds and timezone for simpler parsing
+                iso_time = time_str.split('.')[0]
+                return datetime.fromisoformat(iso_time)
+            else:
+                # Handle traditional syslog format
+                current_year = datetime.now().year
+                timestamp = f"{time_str} {current_year}"
+                return datetime.strptime(timestamp, '%b %d %H:%M:%S %Y')
+        except (ValueError, TypeError):
+            # Keep the original string if parsing fails
+            if self.debug:
+                print(f"DEBUG: Failed to parse timestamp: {time_str}")
+            return None
+
+    def cleanup_old_events(self):
+        """Clean up old events to prevent memory leaks"""
+        current_time = time.time()
+        # Clean up logins older than 10x our dedup timeout
+        cutoff = current_time - (self.DEDUP_TIMEOUT * 10)
+        
+        # Remove old login events
+        old_users = []
+        for user, data in self._recent_logins.items():
+            if data['timestamp'] < cutoff:
+                old_users.append(user)
+                
+        for user in old_users:
+            del self._recent_logins[user]
+            if user in self._reported_users:
+                self._reported_users.remove(user)
+                
+        # Periodically reset our PID tracking to avoid memory leaks
+        if len(self._pid_info) > 1000:  # Arbitrary limit
+            self._pid_info = {}
