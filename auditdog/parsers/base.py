@@ -1,19 +1,30 @@
 from abc import ABC, abstractmethod
-from typing import Dict, Any, Optional
+from typing import Callable, Dict, Any, Optional
 
-class BaseParser(ABC):
-    """Base class for all log parsers"""
+class BaseWatcher(ABC):
+    """Base class for all log watchers"""
     
-    @abstractmethod
-    def parse(self, log_line: str, metadata: Dict[str, Any] = None) -> Optional[Dict[str, Any]]:
+    def __init__(self, callback: Callable[[str, Dict[str, Any]], None]):
         """
-        Parse a log line into a structured event.
+        Initialize a watcher with a callback to be called for each new log entry.
         
         Args:
-            log_line: The log line to parse
-            metadata: Additional metadata about the log line
-            
-        Returns:
-            A structured event dict if the parsing succeeded, None otherwise.
+            callback: Function to call with (log_line, metadata) for each new log entry
         """
+        self.callback = callback
+        self._running = False
+        
+    @abstractmethod
+    async def start(self) -> None:
+        """Start watching for new log entries"""
         pass
+        
+    @abstractmethod
+    async def stop(self) -> None:
+        """Stop watching for new log entries"""
+        pass
+    
+    @property
+    def is_running(self) -> bool:
+        """Return whether the watcher is currently running"""
+        return self._running
