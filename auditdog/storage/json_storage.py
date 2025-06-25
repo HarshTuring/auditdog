@@ -7,6 +7,10 @@ from typing import Dict, Any, List, Optional, Set, Tuple
 
 from .base import BaseStorage
 
+import logging
+
+logger = logging.getLogger('auditdog.storage')
+
 class JSONFileStorage(BaseStorage):
     """Storage backend that uses a JSON file"""
     
@@ -297,6 +301,10 @@ class JSONFileStorage(BaseStorage):
                 
     def close(self) -> None:
         """Close the storage, ensuring all data is flushed"""
-        with self.lock:
-            if self.buffer:
-                self._flush_to_disk()
+        if hasattr(self, 'lock'):  # Check if we have a lock attribute
+            with self.lock:
+                if hasattr(self, 'buffer') and self.buffer:  # Check for buffer attribute
+                    try:
+                        self._flush_to_disk()
+                    except Exception as e:
+                        logger.error(f"Error flushing to disk during close: {e}")

@@ -1,12 +1,15 @@
 import os
 import asyncio
 import time
+import logging
 from typing import Callable, Dict, Any, Optional
 from pathlib import Path
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler, FileModifiedEvent
 
 from .base import BaseWatcher
+
+logger = logging.getLogger('auditdog.watcher')
 
 class LogFileEventHandler(FileSystemEventHandler):
     """Watchdog event handler that monitors file modifications"""
@@ -30,7 +33,7 @@ class LogFileEventHandler(FileSystemEventHandler):
         # Check if the modified file is the one we're watching
         if not event.is_directory and Path(event.src_path) == self.file_path:
             if self.debug:
-                print(f"DEBUG: File modification detected: {event.src_path}")
+                logger.debug(f"File modification detected: {event.src_path}")
             self.callback(event)
 
 class FileWatcher(BaseWatcher):
@@ -62,6 +65,7 @@ class FileWatcher(BaseWatcher):
         self._position = 0
         self._check_interval = 0.1  # seconds
         self._check_task = None
+        self._stopping = False
         
     async def start(self) -> None:
         """Start watching the file for changes"""
@@ -69,10 +73,11 @@ class FileWatcher(BaseWatcher):
             return
             
         self._running = True
-        self._loop = asyncio.get_event_loop()
+        self._stopping = False
+        self._loop = asyncio.get_running_loop()
         
         if self.debug:
-            print(f"DEBUG: Starting file watcher for {self.file_path}")
+            logger.debug(f"Starting file watcher for {self.file_path}")
         
         try:
             # Open the file for reading
@@ -80,17 +85,21 @@ class FileWatcher(BaseWatcher):
             if self.seek_to_end:
                 self._file_handle.seek(0, os.SEEK_END)
                 if self.debug:
-                    print(f"DEBUG: Seeked to end of file at position {self._file_handle.tell()}")
+                    logger.debug(f"Seeked to end of file at position {self._file_handle.tell()}")
             
             # Store current position
             self._position = self._file_handle.tell()
             
             # Process any existing content if not seeking to end
             if not self.seek_to_end:
-                await self._read_new_content(initial=True)
+                try:
+                    await self._read_new_content(initial=True)
+                except Exception as e:
+                    logger.error(f"Error reading initial content: {e}")
             
             # Set up watchdog observer
             self._observer = Observer()
+            self._observer.daemon = True  # Ensure observer thread doesn't block process exit
             event_handler = LogFileEventHandler(self.file_path, self._handle_file_modified, self.debug)
             self._observer.schedule(
                 event_handler, 
@@ -99,73 +108,110 @@ class FileWatcher(BaseWatcher):
             )
             self._observer.start()
             if self.debug:
-                print(f"DEBUG: Watchdog observer started for {self.file_path}")
+                logger.debug(f"Watchdog observer started for {self.file_path}")
             
             # Create a task to periodically check for new content
             self._check_task = asyncio.create_task(self._check_file_content())
             
         except Exception as e:
-            if self.debug:
-                print(f"ERROR: Failed to start file watcher: {str(e)}")
+            logger.error(f"Failed to start file watcher: {str(e)}")
             await self.stop()
             raise
         
     async def stop(self) -> None:
         """Stop watching the file"""
-        if not self._running:
+        if not self._running or self._stopping:
             return
             
+        self._stopping = True
         self._running = False
         
         if self.debug:
-            print(f"DEBUG: Stopping file watcher for {self.file_path}")
+            logger.debug(f"Stopping file watcher for {self.file_path}")
         
-        if self._check_task:
+        if self._check_task and not self._check_task.done():
             self._check_task.cancel()
             try:
-                await self._check_task
-            except asyncio.CancelledError:
-                pass
-            self._check_task = None
+                # Wait for the task to be cancelled with timeout
+                await asyncio.wait_for(asyncio.shield(self._check_task), timeout=2)
+            except (asyncio.TimeoutError, asyncio.CancelledError):
+                logger.debug("Check task cancellation timed out or was cancelled")
+            finally:
+                self._check_task = None
             
         if self._observer:
-            self._observer.stop()
-            self._observer.join()
-            self._observer = None
+            try:
+                self._observer.stop()
+                # Don't wait too long for the observer to stop, as it might be blocked
+                # in native code (especially on Windows)
+                self._observer.join(timeout=1.0)
+            except Exception as e:
+                logger.error(f"Error stopping observer: {e}")
+            finally:
+                self._observer = None
             
         if self._file_handle:
-            self._file_handle.close()
-            self._file_handle = None
+            try:
+                self._file_handle.close()
+            except Exception as e:
+                logger.error(f"Error closing file: {e}")
+            finally:
+                self._file_handle = None
+                
+        self._stopping = False
     
     def _handle_file_modified(self, event):
         """Handle a file modification event from watchdog"""
         if self.debug:
-            print(f"DEBUG: File modification event received for {self.file_path}")
-        asyncio.run_coroutine_threadsafe(self._read_new_content(), self._loop)
+            logger.debug(f"File modification event received for {self.file_path}")
+            
+        # Only process if we're still running
+        if self._running and not self._stopping and self._loop and not self._loop.is_closed():
+            try:
+                asyncio.run_coroutine_threadsafe(self._read_new_content(), self._loop)
+            except RuntimeError as e:
+                # This can happen if the event loop is closed
+                if self.debug:
+                    logger.debug(f"Error scheduling read task: {e}")
         
     async def _check_file_content(self):
         """Periodically check for new content in the file"""
-        while self._running:
-            await self._read_new_content()
-            await asyncio.sleep(self._check_interval)
+        try:
+            while self._running and not self._stopping:
+                try:
+                    await self._read_new_content()
+                    await asyncio.sleep(self._check_interval)
+                except asyncio.CancelledError:
+                    raise  # Re-raise to be caught by the outer try/except
+                except Exception as e:
+                    logger.error(f"Error checking file content: {e}")
+                    # Sleep a bit longer after an error to avoid tight error loops
+                    await asyncio.sleep(1.0)
+        except asyncio.CancelledError:
+            if self.debug:
+                logger.debug("File check task cancelled")
+            raise
+        except Exception as e:
+            logger.error(f"Unexpected error in file check task: {e}")
     
     async def _read_new_content(self, initial=False):
         """Read new content from the file since the last read"""
-        if not self._file_handle or not self._running:
+        if not self._file_handle or not self._running or self._stopping:
             return
             
         try:
             # Check if file has been truncated
             try:
                 size = os.path.getsize(self.file_path)
-            except OSError:
-                # File might have been temporarily unavailable
+            except OSError as e:
+                if self.debug:
+                    logger.debug(f"Error getting file size: {e}")
                 return
                 
             if size < self._position:
                 # File was truncated
                 if self.debug:
-                    print(f"DEBUG: File appears to have been truncated, resetting position")
+                    logger.debug(f"File appears to have been truncated, resetting position")
                 self._file_handle.seek(0)
                 self._position = 0
                 
@@ -175,16 +221,20 @@ class FileWatcher(BaseWatcher):
             # Read all new lines
             new_lines = []
             while True:
-                line = self._file_handle.readline()
-                if not line:
+                try:
+                    line = self._file_handle.readline()
+                    if not line:
+                        break
+                        
+                    # Skip empty lines
+                    line = line.rstrip('\n')
+                    if not line:
+                        continue
+                        
+                    new_lines.append(line)
+                except IOError as e:
+                    logger.error(f"IO error reading file: {e}")
                     break
-                    
-                # Skip empty lines
-                line = line.rstrip('\n')
-                if not line:
-                    continue
-                    
-                new_lines.append(line)
                     
             # Update position
             self._position = self._file_handle.tell()
@@ -192,7 +242,7 @@ class FileWatcher(BaseWatcher):
             # Process all new lines
             if new_lines:
                 if self.debug:
-                    print(f"DEBUG: Read {len(new_lines)} new line(s)")
+                    logger.debug(f"Read {len(new_lines)} new line(s)")
                 
                 # Send the lines to the callback with metadata
                 for line in new_lines:
@@ -200,10 +250,12 @@ class FileWatcher(BaseWatcher):
                         'source': self.file_path,
                         'timestamp': time.time()
                     }
-                    self.callback(line, metadata)
+                    try:
+                        self.callback(line, metadata)
+                    except Exception as e:
+                        logger.error(f"Error in callback processing line: {e}")
             elif initial and self.debug:
-                print(f"DEBUG: Initial read found no lines to process")
+                logger.debug(f"Initial read found no lines to process")
                 
         except Exception as e:
-            if self.debug:
-                print(f"ERROR: Error reading from file: {str(e)}")
+            logger.error(f"Error reading from file: {str(e)}")

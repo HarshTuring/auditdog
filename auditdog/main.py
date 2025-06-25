@@ -4,6 +4,7 @@ import os
 import signal
 import sys
 from datetime import datetime
+import logging
 
 # Add the parent directory to the Python path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
@@ -13,8 +14,24 @@ from auditdog.watchers.file_watcher import FileWatcher
 from auditdog.parsers.ssh_parser import SSHParser
 from auditdog.storage.json_storage import JSONFileStorage
 
+# Set up logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger('auditdog')
+
+# Global variables for shutdown handling
+shutdown_event = None
+tasks = []
+
 async def main():
     """Main entry point for the AuditDog agent"""
+    global shutdown_event, tasks
+    
+    # Create an event for signaling shutdown
+    shutdown_event = asyncio.Event()
+    
     # Parse command-line arguments
     parser = argparse.ArgumentParser(description='AuditDog system monitoring agent')
     parser.add_argument('--ssh-log', type=str, 
@@ -41,6 +58,10 @@ async def main():
                         help='Show event statistics')
     args = parser.parse_args()
     
+    # Set log level based on debug flag
+    if args.debug:
+        logger.setLevel(logging.DEBUG)
+        
     debug = args.debug
     seek_to_end = not args.from_beginning
     
@@ -61,9 +82,9 @@ async def main():
         return show_statistics(storage)
     
     if debug:
-        print("DEBUG: Debug mode enabled")
-        print(f"DEBUG: Processing from {'new entries only' if seek_to_end else 'beginning of file'}")
-        print(f"DEBUG: Storing events to {storage_path}")
+        logger.debug("Debug mode enabled")
+        logger.debug(f"Processing from {'new entries only' if seek_to_end else 'beginning of file'}")
+        logger.debug(f"Storing events to {storage_path}")
     
     # Determine SSH log file location
     ssh_log_path = args.ssh_log
@@ -78,12 +99,12 @@ async def main():
             if os.path.exists(path) and os.access(path, os.R_OK):
                 ssh_log_path = path
                 if debug:
-                    print(f"DEBUG: Auto-detected log file at {ssh_log_path}")
+                    logger.debug(f"Auto-detected log file at {ssh_log_path}")
                 break
                 
     if ssh_log_path is None or not os.path.exists(ssh_log_path):
-        print(f"Error: Cannot find readable SSH log file. Please specify with --ssh-log")
-        sys.exit(1)
+        logger.error(f"Cannot find readable SSH log file. Please specify with --ssh-log")
+        return 1
         
     print(f"Monitoring SSH log file: {ssh_log_path}")
     print(f"Storing events to: {storage_path}")
@@ -93,15 +114,15 @@ async def main():
         with open(ssh_log_path, 'r') as f:
             test_lines = [f.readline() for _ in range(3)]
         if debug:
-            print(f"DEBUG: Successfully read from log file. Example lines:")
+            logger.debug(f"Successfully read from log file. Example lines:")
             for i, line in enumerate(test_lines):
                 if line.strip():
-                    print(f"DEBUG: Line {i+1}: {line.strip()}")
+                    logger.debug(f"Line {i+1}: {line.strip()}")
     except Exception as e:
-        print(f"Error reading from log file: {str(e)}")
+        logger.error(f"Error reading from log file: {str(e)}")
         if "Permission denied" in str(e):
             print("Hint: You may need to run this program with sudo or as root")
-        sys.exit(1)
+        return 1
     
     # Create and configure the agent
     agent = AuditDogAgent(debug=debug, storage=storage)
@@ -119,52 +140,81 @@ async def main():
     )
     agent.add_watcher(ssh_watcher)
     
-    # Handle graceful shutdown
-    loop = asyncio.get_event_loop()
-    
-    def signal_handler():
-        print("\nShutting down...")
-        loop.create_task(agent.stop())
-        loop.stop()
-        
+    # Set up signal handlers for graceful shutdown
+    loop = asyncio.get_running_loop()
     for sig in (signal.SIGINT, signal.SIGTERM):
-        loop.add_signal_handler(sig, signal_handler)
+        loop.add_signal_handler(
+            sig, lambda: asyncio.create_task(shutdown(agent))
+        )
     
     # Start the agent
     await agent.start()
     
-    # Add periodic cleanup tasks
-    async def cleanup_tasks():
-        while True:
-            # Clean up old parser events
-            for parser in agent.parsers:
-                if hasattr(parser, 'cleanup_old_events'):
-                    parser.cleanup_old_events()
-                    
-            # Clean up old storage events (keep last 30 days)
-            if storage:
-                deleted = storage.cleanup_old_events(max_age_days=30)
-                if deleted and debug:
-                    print(f"DEBUG: Cleaned up {deleted} old events from storage")
-                    
-            # Run cleanup every hour
-            await asyncio.sleep(3600)
+    # Add periodic cleanup task
+    cleanup_task = asyncio.create_task(cleanup_tasks(agent, storage, debug))
+    tasks.append(cleanup_task)
     
-    cleanup_task = asyncio.create_task(cleanup_tasks())
-    
+    # Wait for shutdown signal
     try:
-        # Run forever
-        await asyncio.Future()
+        await shutdown_event.wait()
+        logger.info("Shutdown initiated")
+    except asyncio.CancelledError:
+        logger.info("Main task cancelled")
     finally:
-        # Cancel cleanup task
-        cleanup_task.cancel()
-        try:
-            await cleanup_task
-        except asyncio.CancelledError:
-            pass
-            
-        # Make sure we clean up
+        # Make sure the agent stops even if we get here from an exception
         await agent.stop()
+        
+        # Cancel all tasks
+        for task in tasks:
+            if not task.done():
+                task.cancel()
+                
+        # Wait for all tasks to complete with a timeout
+        if tasks:
+            try:
+                await asyncio.wait(tasks, timeout=5)
+            except asyncio.CancelledError:
+                logger.debug("Task wait cancelled")
+            
+        logger.info("Shutdown complete")
+    
+    return 0
+
+async def shutdown(agent):
+    """Initiate graceful shutdown"""
+    logger.info("Shutting down...")
+    print("\nShutting down AuditDog, please wait...")
+    
+    # Signal all tasks to shut down
+    shutdown_event.set()
+
+async def cleanup_tasks(agent, storage, debug):
+    """Periodic cleanup tasks"""
+    try:
+        while not shutdown_event.is_set():
+            try:
+                # Clean up old parser events
+                for parser in agent.parsers:
+                    if hasattr(parser, 'cleanup_old_events'):
+                        parser.cleanup_old_events()
+                        
+                # Clean up old storage events (keep last 30 days)
+                if storage:
+                    deleted = storage.cleanup_old_events(max_age_days=30)
+                    if deleted and debug:
+                        logger.debug(f"Cleaned up {deleted} old events from storage")
+                        
+                # Run cleanup every hour
+                await asyncio.wait_for(shutdown_event.wait(), timeout=3600)
+            except asyncio.TimeoutError:
+                # This is expected - timeout just means we continue with cleanup
+                pass
+            except Exception as e:
+                logger.error(f"Error during cleanup: {e}")
+                
+    except asyncio.CancelledError:
+        logger.debug("Cleanup task cancelled")
+        raise
 
 def query_stored_events(storage, args):
     """Query and display stored events"""
@@ -226,5 +276,18 @@ def show_statistics(storage):
         
     return 0
 
+def run_main():
+    """Run the main function and handle errors"""
+    try:
+        exit_code = asyncio.run(main())
+        sys.exit(exit_code)
+    except KeyboardInterrupt:
+        print("\nInterrupted by user. Exiting...")
+        sys.exit(0)
+    except Exception as e:
+        logger.exception("Unhandled exception")
+        print(f"Error: {e}")
+        sys.exit(1)
+
 if __name__ == '__main__':
-    asyncio.run(main())
+    run_main()
