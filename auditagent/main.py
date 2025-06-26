@@ -9,10 +9,10 @@ import logging
 # Add the parent directory to the Python path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from auditdog.core.agent import AuditDogAgent
-from auditdog.watchers.file_watcher import FileWatcher
-from auditdog.parsers.ssh_parser import SSHParser
-from auditdog.storage.json_storage import JSONFileStorage
+from auditagent.core.agent import AuditDogAgent
+from auditagent.watchers.file_watcher import FileWatcher
+from auditagent.parsers.ssh_parser import SSHParser
+from auditagent.storage.json_storage import JSONFileStorage
 
 # Set up logging
 logging.basicConfig(
