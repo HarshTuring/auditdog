@@ -56,6 +56,21 @@ class CRUDBase(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
         Create a new record.
         """
         obj_in_data = jsonable_encoder(obj_in)
+        # Print the timestamp value if present
+        if 'timestamp' in obj_in_data:
+            print(f"[DB INSERT] timestamp: {obj_in_data['timestamp']} ({type(obj_in_data['timestamp'])})")
+            ts = obj_in_data['timestamp']
+            from datetime import datetime
+            if isinstance(ts, str):
+                if ts.endswith('Z'):
+                    ts = ts[:-1] + '+00:00'
+                try:
+                    obj_in_data['timestamp'] = datetime.fromisoformat(ts)
+                except Exception:
+                    try:
+                        obj_in_data['timestamp'] = datetime.strptime(ts, "%Y-%m-%d %H:%M:%S")
+                    except Exception:
+                        raise ValueError(f"Invalid timestamp format: {ts}")
         db_obj = self.model(**obj_in_data)  # type: ignore
         db.add(db_obj)
         await db.commit()
