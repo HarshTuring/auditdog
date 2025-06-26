@@ -1,7 +1,9 @@
 import os
 from typing import List, Optional, Union
 
-from pydantic import AnyHttpUrl, BaseSettings, PostgresDsn, validator
+from pydantic import AnyHttpUrl, PostgresDsn, validator, computed_field
+from pydantic_settings import BaseSettings
+from pydantic import field_validator
 
 
 class Settings(BaseSettings):
@@ -17,25 +19,18 @@ class Settings(BaseSettings):
     # PostgreSQL configuration
     POSTGRES_SERVER: str = os.getenv("POSTGRES_SERVER", "localhost")
     POSTGRES_USER: str = os.getenv("POSTGRES_USER", "postgres")
-    POSTGRES_PASSWORD: str = os.getenv("POSTGRES_PASSWORD", "postgres")
+    POSTGRES_PASSWORD: str = os.getenv("POSTGRES_PASSWORD", "root")
     POSTGRES_DB: str = os.getenv("POSTGRES_DB", "auditdog")
     POSTGRES_PORT: str = os.getenv("POSTGRES_PORT", "5432")
-    DATABASE_URL: Optional[PostgresDsn] = None
+    # DATABASE_URL: Optional[PostgresDsn] = None
+    SQLALCHEMY_DATABASE_URI: Optional[str] = None
 
-    @validator("DATABASE_URL", pre=True)
-    def assemble_db_url(cls, v: Optional[str], values: dict) -> str:
-        if v:
-            return v
-        
-        return PostgresDsn.build(
-            scheme="postgresql+asyncpg",
-            user=values.get("POSTGRES_USER"),
-            password=values.get("POSTGRES_PASSWORD"),
-            host=values.get("POSTGRES_SERVER"),
-            port=values.get("POSTGRES_PORT"),
-            path=f"/{values.get('POSTGRES_DB') or ''}",
-        )
-
+    @computed_field
+    @property
+    def DATABASE_URL(self) -> str:
+        """Build the database URL from component parts."""
+        return f"postgresql+asyncpg://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}@{self.POSTGRES_SERVER}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
+    
     # Security configuration
     SECRET_KEY: str = os.getenv("SECRET_KEY", "development_secret_key")
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7  # 7 days

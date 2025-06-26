@@ -41,7 +41,7 @@ class SSHEventBase(BaseModel):
     
     # Additional context
     raw_log: Optional[str] = Field(None, description="Original log entry that generated this event")
-    metadata: Optional[Dict[str, Any]] = Field(default_factory=dict, description="Additional metadata")
+    event_metadata: Optional[Dict[str, Any]] = Field(default_factory=dict, description="Additional metadata")
     
     @validator('timestamp', pre=True)
     def parse_timestamp(cls, value):
@@ -78,7 +78,7 @@ class SSHEventUpdate(BaseModel):
     session_id: Optional[str] = None
     process_id: Optional[int] = None
     raw_log: Optional[str] = None
-    metadata: Optional[Dict[str, Any]] = None
+    event_metadata: Optional[Dict[str, Any]] = None
 
 
 class SSHEventInDB(SSHEventBase):

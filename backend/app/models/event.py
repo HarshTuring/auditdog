@@ -18,7 +18,7 @@ class SSHEvent(Base):
     event_type: Mapped[EventType] = mapped_column(
         Enum(EventType), 
         nullable=False, 
-        index=True,
+        # index=True,
         comment="Type of SSH event"
     )
     timestamp: Mapped[datetime] = mapped_column(
@@ -68,7 +68,7 @@ class SSHEvent(Base):
     session_id: Mapped[Optional[str]] = mapped_column(
         String(100),
         nullable=True,
-        index=True,
+        # index=True,
         comment="SSH session identifier"
     )
     process_id: Mapped[Optional[int]] = mapped_column(
@@ -85,7 +85,7 @@ class SSHEvent(Base):
     )
     
     # Additional metadata stored as JSON
-    metadata: Mapped[Optional[Dict[str, Any]]] = mapped_column(
+    event_metadata: Mapped[Optional[Dict[str, Any]]] = mapped_column(
         JSONB,
         nullable=True,
         default={},
