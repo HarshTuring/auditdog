@@ -14,6 +14,9 @@ from auditagent.watchers.file_watcher import FileWatcher
 from auditagent.parsers.ssh_parser import SSHParser
 from auditagent.storage.json_storage import JSONFileStorage
 
+from auditagent.parsers.command_parser import AuditdCommandParser
+
+
 # Set up logging
 logging.basicConfig(
     level=logging.INFO,
@@ -56,6 +59,9 @@ async def main():
                         help='Show only the last N events (with --query)')
     parser.add_argument('--stats', action='store_true',
                         help='Show event statistics')
+    parser.add_argument('--auditd-log', type=str, 
+                        help='Path to the auditd log file (default: /var/log/audit/audit.log)',
+                        default='/var/log/audit/audit.log')
     args = parser.parse_args()
     
     # Set log level based on debug flag
@@ -130,7 +136,11 @@ async def main():
     # Add the SSH parser
     ssh_parser = SSHParser(debug=debug)
     agent.add_parser(ssh_parser)
-    
+
+    # Add the command parser to detect command executions in auditd logs
+    command_parser = AuditdCommandParser(debug=debug)
+    agent.add_parser(command_parser)
+
     # Add the file watcher for SSH logs
     ssh_watcher = FileWatcher(
         ssh_log_path,
@@ -139,6 +149,24 @@ async def main():
         debug=debug
     )
     agent.add_watcher(ssh_watcher)
+
+    # Add auditd log watcher if available
+    auditd_log_path = args.auditd_log
+    if os.path.exists(auditd_log_path) and os.access(auditd_log_path, os.R_OK):
+        print(f"Monitoring auditd log file: {auditd_log_path}")
+        auditd_watcher = FileWatcher(
+            auditd_log_path,
+            agent._process_log_line,
+            seek_to_end=seek_to_end,
+            debug=debug
+        )
+        agent.add_watcher(auditd_watcher)
+    else:
+        print("Auditd logs not found or not accessible. Command execution monitoring is disabled.")
+        print("To enable command monitoring, install and configure auditd:")
+        print("  sudo apt install auditd audispd-plugins           # Debian/Ubuntu")
+        print("  sudo yum install audit audit-libs                 # RHEL/CentOS")
+        print("  sudo auditctl -a exit,always -F arch=b64 -S execve -k commands")
     
     # Set up signal handlers for graceful shutdown
     loop = asyncio.get_running_loop()
@@ -249,6 +277,13 @@ def query_stored_events(storage, args):
             user = event.get('user', 'unknown')
             ip = event.get('ip_address', 'unknown')
             print(f"{timestamp} - Invalid User: '{user}' from {ip}")
+        elif event_type == 'command_execution':
+            user = event.get('user', 'unknown')
+            command = event.get('command', 'unknown')
+            arguments = event.get('arguments', '')
+            working_dir = event.get('working_directory', '')
+            dir_info = f" in {working_dir}" if working_dir else ""
+            print(f"{timestamp} - Command: User '{user}' ran '{command} {arguments}'{dir_info}")
         else:
             print(f"{timestamp} - {event_type}: {event}")
             
