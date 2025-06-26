@@ -137,10 +137,6 @@ async def main():
     ssh_parser = SSHParser(debug=debug)
     agent.add_parser(ssh_parser)
 
-    # Add the command parser to detect command executions in auditd logs
-    command_parser = AuditdCommandParser(debug=debug)
-    agent.add_parser(command_parser)
-
     # Add the file watcher for SSH logs
     ssh_watcher = FileWatcher(
         ssh_log_path,
@@ -150,19 +146,32 @@ async def main():
     )
     agent.add_watcher(ssh_watcher)
 
+    command_parser = AuditdCommandParser(debug=debug)
+    agent.add_parser(command_parser)
+
     # Add auditd log watcher if available
     auditd_log_path = args.auditd_log
-    if os.path.exists(auditd_log_path) and os.access(auditd_log_path, os.R_OK):
-        print(f"Monitoring auditd log file: {auditd_log_path}")
-        auditd_watcher = FileWatcher(
-            auditd_log_path,
-            agent._process_log_line,
-            seek_to_end=seek_to_end,
-            debug=debug
-        )
-        agent.add_watcher(auditd_watcher)
+    if os.path.exists(auditd_log_path):
+        try:
+            # Test if we can read the file
+            with open(auditd_log_path, 'r') as f:
+                f.readline()
+                
+            print(f"Monitoring auditd log file: {auditd_log_path}")
+            auditd_watcher = FileWatcher(
+                auditd_log_path,
+                agent._process_log_line,
+                seek_to_end=seek_to_end,
+                debug=debug
+            )
+            agent.add_watcher(auditd_watcher)
+        except PermissionError:
+            print(f"Cannot read {auditd_log_path} due to permission error.")
+            print("Run the agent with sudo or ensure the user has permissions to read audit logs.")
+        except Exception as e:
+            print(f"Error setting up auditd log monitoring: {e}")
     else:
-        print("Auditd logs not found or not accessible. Command execution monitoring is disabled.")
+        print("Auditd logs not found. Command execution monitoring is disabled.")
         print("To enable command monitoring, install and configure auditd:")
         print("  sudo apt install auditd audispd-plugins           # Debian/Ubuntu")
         print("  sudo yum install audit audit-libs                 # RHEL/CentOS")

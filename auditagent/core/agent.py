@@ -95,7 +95,7 @@ class AuditDogAgent:
             print("-" * 60)
         except Exception as e:
             logger.error(f"Error processing event: {e}")
-            
+
     async def start(self) -> None:
         """Start the agent and all its watchers"""
         if self.running:

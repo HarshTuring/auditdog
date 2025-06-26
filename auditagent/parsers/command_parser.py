@@ -18,12 +18,13 @@ class AuditdCommandParser(BaseParser):
         self.recent_commands = {}
         
         # Patterns for matching different auditd record types
-        self.timestamp_pattern = re.compile(r'audit\((?P<timestamp>[\d\.]+):(?P<event_id>\d+)\)')
-        self.syscall_pattern = re.compile(r'type=SYSCALL .*?syscall=(?P<syscall>\d+).*? success=(?P<success>\S+).*? uid=(?P<uid>\d+).*? gid=(?P<gid>\d+).*? euid=(?P<euid>\d+).*? pid=(?P<pid>\d+)')
-        self.execve_pattern = re.compile(r'type=EXECVE .*?argc=(?P<argc>\d+) a0=(?P<command>\S+)(?: a1=(?P<arg1>\S+))?(?: a2=(?P<arg2>\S+))?')
-        self.path_pattern = re.compile(r'type=PATH .*?item=(?P<item>\d+).*? name=(?P<name>\S+).*? inode=(?P<inode>\d+)')
-        self.cwd_pattern = re.compile(r'type=CWD .*?cwd=(?P<cwd>\S+)')
-        self.user_pattern = re.compile(r'type=USER .*?uid=(?P<uid>\d+).*? auid=(?P<auid>\d+).*? ses=(?P<session>\d+)')
+        self.msg_pattern = re.compile(r'msg=audit\((?P<timestamp>[\d\.]+):(?P<event_id>\d+)\)')
+        self.syscall_pattern = re.compile(r'type=SYSCALL .*? syscall=(?P<syscall>\d+) success=(?P<success>\S+) .*? ppid=(?P<ppid>\d+) pid=(?P<pid>\d+) auid=(?P<auid>\d+) uid=(?P<uid>\d+) gid=(?P<gid>\d+)')
+        self.uid_info_pattern = re.compile(r'AUID="(?P<auid_name>[^"]+)" UID="(?P<uid_name>[^"]+)" GID="(?P<gid_name>[^"]+)"')
+        self.execve_pattern = re.compile(r'type=EXECVE .*? argc=(?P<argc>\d+)(?: a0="(?P<a0>[^"]+)")?(?: a1="(?P<a1>[^"]+)")?(?: a2="(?P<a2>[^"]+)")?')
+        self.cwd_pattern = re.compile(r'type=CWD .*? cwd="(?P<cwd>[^"]+)"')
+        self.path_pattern = re.compile(r'type=PATH .*? item=0 name="(?P<name>[^"]+)"')
+        self.proctitle_pattern = re.compile(r'type=PROCTITLE .*? proctitle=(?P<proctitle>[0-9A-F]+)')
         
         # Syscall number for execve (could be different on some architectures)
         self.execve_syscall = 59  # execve syscall number on x86_64
@@ -51,22 +52,22 @@ class AuditdCommandParser(BaseParser):
             self._cleanup_old_events()
             self.last_cleanup = current_time
         
-        # Only process auditd logs
+        # Skip lines that don't look like audit logs
         if not log_line.startswith('type='):
             return None
             
         # Extract event ID and timestamp
-        timestamp_match = self.timestamp_pattern.search(log_line)
-        if not timestamp_match:
+        msg_match = self.msg_pattern.search(log_line)
+        if not msg_match:
             return None
             
-        timestamp = timestamp_match.group('timestamp')
-        event_id = timestamp_match.group('event_id')
+        timestamp = float(msg_match.group('timestamp'))
+        event_id = msg_match.group('event_id')
         
         # Initialize event if not already present
         if event_id not in self.partial_events:
             self.partial_events[event_id] = {
-                'timestamp': datetime.fromtimestamp(float(timestamp)).isoformat(),
+                'timestamp': datetime.fromtimestamp(timestamp).isoformat(),
                 'event_id': event_id,
                 'parts': set(),
                 'created_at': current_time
@@ -80,6 +81,14 @@ class AuditdCommandParser(BaseParser):
         if syscall_match:
             event['parts'].add('syscall')
             syscall = int(syscall_match.group('syscall'))
+            
+            # Check UID info if available
+            uid_info_match = self.uid_info_pattern.search(log_line)
+            if uid_info_match:
+                event['auid_name'] = uid_info_match.group('auid_name')
+                event['uid_name'] = uid_info_match.group('uid_name')
+                event['gid_name'] = uid_info_match.group('gid_name')
+            
             if syscall != self.execve_syscall:
                 # We're only interested in execve syscalls
                 del self.partial_events[event_id]
@@ -88,24 +97,29 @@ class AuditdCommandParser(BaseParser):
             # This is an execve syscall, so gather relevant information
             event['success'] = syscall_match.group('success') == 'yes'
             event['uid'] = syscall_match.group('uid')
-            event['euid'] = syscall_match.group('euid')
+            event['auid'] = syscall_match.group('auid')
             event['gid'] = syscall_match.group('gid')
             event['pid'] = syscall_match.group('pid')
+            event['ppid'] = syscall_match.group('ppid')
             
         # Process EXECVE records
         execve_match = self.execve_pattern.search(log_line)
         if execve_match:
             event['parts'].add('execve')
-            # Remove quotes if present
-            command = execve_match.group('command')
-            event['command'] = self._unquote(command)
             
-            # Build arguments list
+            argc = int(execve_match.group('argc'))
             args = []
-            for i in range(1, int(execve_match.group('argc'))):
-                arg_match = re.search(f'a{i}=(?P<arg>\\S+)', log_line)
+            
+            # Get the command (a0)
+            command = execve_match.group('a0')
+            if command:
+                event['command'] = command
+                
+            # Extract arguments from a1 to an
+            for i in range(1, argc):
+                arg_match = re.search(f' a{i}="([^"]+)"', log_line)
                 if arg_match:
-                    args.append(self._unquote(arg_match.group('arg')))
+                    args.append(arg_match.group(1))
             
             event['args'] = args
                 
@@ -113,27 +127,34 @@ class AuditdCommandParser(BaseParser):
         cwd_match = self.cwd_pattern.search(log_line)
         if cwd_match:
             event['parts'].add('cwd')
-            event['cwd'] = self._unquote(cwd_match.group('cwd'))
+            event['cwd'] = cwd_match.group('cwd')
             
         # Process PATH records for the executable path
         path_match = self.path_pattern.search(log_line)
-        if path_match and path_match.group('item') == '0':
+        if path_match:
             event['parts'].add('path')
-            event['executable'] = self._unquote(path_match.group('name'))
+            event['executable'] = path_match.group('name')
             
-        # Process USER records
-        user_match = self.user_pattern.search(log_line)
-        if user_match:
-            event['parts'].add('user')
-            event['auid'] = user_match.group('auid')
-            event['session'] = user_match.group('session')
+        # Process PROCTITLE records (contains hex-encoded command line)
+        proctitle_match = self.proctitle_pattern.search(log_line)
+        if proctitle_match:
+            event['parts'].add('proctitle')
+            hex_title = proctitle_match.group('proctitle')
+            try:
+                # Try to decode the hex string to get the full command line
+                proctitle_bytes = bytes.fromhex(hex_title)
+                proctitle = proctitle_bytes.decode('utf-8', errors='replace')
+                event['proctitle'] = proctitle
+            except Exception as e:
+                if self.debug:
+                    print(f"DEBUG: Failed to decode proctitle: {e}")
             
         # Check if we have enough information to create a complete command event
         # At minimum, we need syscall, execve and either command or executable
         if {'syscall', 'execve'}.issubset(event['parts']) and event.get('success', False):
             if 'command' in event or 'executable' in event:
-                # Get username from UID (would need to use pwd module in production)
-                username = self._get_username_from_uid(event.get('uid', '0'))
+                # Get username - prefer the name from UID info if available
+                username = event.get('uid_name', self._get_username_from_uid(event.get('uid', '0')))
                 
                 # Create a command event
                 command_str = event.get('command', event.get('executable', 'unknown'))
@@ -160,13 +181,12 @@ class AuditdCommandParser(BaseParser):
                     'arguments': args_str,
                     'working_directory': event.get('cwd', ''),
                     'pid': event.get('pid', ''),
-                    'exit_code': 0 if event.get('success', False) else 1,
                     'source': metadata.get('source', 'auditd'),
                     'metadata': {
                         'uid': event.get('uid', ''),
-                        'euid': event.get('euid', ''),
+                        'auid': event.get('auid', ''),
                         'gid': event.get('gid', ''),
-                        'session_id': event.get('session', '')
+                        'ppid': event.get('ppid', '')
                     }
                 }
                 
@@ -177,12 +197,6 @@ class AuditdCommandParser(BaseParser):
                 
         # If we get here, the event is not yet complete
         return None
-    
-    def _unquote(self, text):
-        """Remove quotes from text if present."""
-        if text.startswith('"') and text.endswith('"'):
-            return text[1:-1].replace('\\"', '"')
-        return text
         
     def _get_username_from_uid(self, uid):
         """Get username from UID."""
@@ -222,3 +236,7 @@ class AuditdCommandParser(BaseParser):
                 
         for command_key in commands_to_remove:
             del self.recent_commands[command_key]
+            
+    def cleanup_old_events(self):
+        """Clean up old events - Called periodically by the agent"""
+        self._cleanup_old_events()
