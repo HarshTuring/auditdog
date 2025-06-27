@@ -6,7 +6,9 @@ fi
 
 # Configuration
 API_URL="http://localhost:8000/api/v1/commands/explain"
+MAX_RETRIES=5
 TIMEOUT=15  # seconds
+RETRY_DELAY=1  # seconds between retries
 
 # Get the command to explain (everything after auditdog)
 COMMAND="$@"
@@ -25,6 +27,14 @@ WORKING_DIR=$(pwd)
 TEMP_JSON=$(mktemp)
 TEMP_RESPONSE=$(mktemp)
 
+# Function to clean up temporary files
+cleanup() {
+  rm -f "$TEMP_JSON" "$TEMP_RESPONSE"
+}
+
+# Set trap to ensure cleanup on script exit
+trap cleanup EXIT
+
 # Prepare the JSON payload
 cat > "$TEMP_JSON" << EOF
 {
@@ -38,72 +48,95 @@ EOF
 
 # Print debug info if enabled
 if [ ! -z "$DEBUG" ]; then
-  echo "Debug: API URL = $API_URL"
-  echo "Debug: JSON payload:"
+  printf "Debug: API URL = %s\n" "$API_URL"
+  printf "Debug: JSON payload:\n"
   cat "$TEMP_JSON"
 fi
 
-# Make the API request and save response to a temporary file
-if [ ! -z "$DEBUG" ]; then
-  curl -v -s -m "$TIMEOUT" -X POST "$API_URL" \
-    -H "Content-Type: application/json" \
-    -d @"$TEMP_JSON" > "$TEMP_RESPONSE" 2>&1
-  CURL_STATUS=$?
-else
-  curl -s -m "$TIMEOUT" -X POST "$API_URL" \
-    -H "Content-Type: application/json" \
-    -d @"$TEMP_JSON" > "$TEMP_RESPONSE" 2>&1
-  CURL_STATUS=$?
-fi
+# Initialize retry counter
+RETRY_COUNT=0
+SUCCESS=false
 
-# Check if curl command succeeded
-if [ $CURL_STATUS -ne 0 ]; then
-  printf "🐕 Error: Failed to connect to AuditDog API (curl error %d)\n" $CURL_STATUS
-  
-  if [ $CURL_STATUS -eq 7 ]; then
-    printf "Could not connect to server. Is the API running?\n"
-  elif [ $CURL_STATUS -eq 28 ]; then
-    printf "Connection timed out. Server might be overloaded or unreachable.\n"
+# Retry loop
+while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
+  if [ $RETRY_COUNT -gt 0 ]; then
+    printf "Retry attempt %d of %d...\n" $RETRY_COUNT $MAX_RETRIES
+    sleep $RETRY_DELAY
+    # Increase delay for subsequent retries (exponential backoff)
+    RETRY_DELAY=$((RETRY_DELAY * 2))
   fi
   
-  # Clean up temp files
-  rm -f "$TEMP_JSON" "$TEMP_RESPONSE"
-  
-  printf "Would you like to execute the command anyway? [y/N] "
-  read -r CONFIRM
-  if [[ "$CONFIRM" == "y" || "$CONFIRM" == "Y" ]]; then
-    eval "$COMMAND"
+  # Make the API request
+  if [ ! -z "$DEBUG" ]; then
+    printf "Calling API...\n"
+    curl -v -s -m "$TIMEOUT" -X POST "$API_URL" \
+      -H "Content-Type: application/json" \
+      -d @"$TEMP_JSON" > "$TEMP_RESPONSE" 2>&1
+    CURL_STATUS=$?
+    printf "Curl status: %d\n" $CURL_STATUS
+  else
+    curl -s -m "$TIMEOUT" -X POST "$API_URL" \
+      -H "Content-Type: application/json" \
+      -d @"$TEMP_JSON" > "$TEMP_RESPONSE" 2>&1
+    CURL_STATUS=$?
   fi
-  exit 1
-fi
-
-# Get response content
-RESPONSE=$(cat "$TEMP_RESPONSE")
-
-# Check if the response is valid JSON
-if ! jq . "$TEMP_RESPONSE" > /dev/null 2>&1; then
-  printf "🐕 Error: Invalid JSON response from API\n"
-  printf "Response: %s\n" "$RESPONSE"
   
-  # Clean up temp files
-  rm -f "$TEMP_JSON" "$TEMP_RESPONSE"
-  
-  printf "Would you like to execute the command anyway? [y/N] "
-  read -r CONFIRM
-  if [[ "$CONFIRM" == "y" || "$CONFIRM" == "Y" ]]; then
-    eval "$COMMAND"
+  # Check if curl command succeeded
+  if [ $CURL_STATUS -ne 0 ]; then
+    printf "🐕 Error: API request failed (curl error %d)\n" $CURL_STATUS
+    
+    if [ $CURL_STATUS -eq 7 ]; then
+      printf "Could not connect to server. Is the API running?\n"
+    elif [ $CURL_STATUS -eq 28 ]; then
+      printf "Connection timed out. Server might be overloaded.\n"
+    fi
+    
+    RETRY_COUNT=$((RETRY_COUNT + 1))
+    continue  # Try again
   fi
-  exit 1
-fi
+  
+  # Check response size
+  RESPONSE_SIZE=$(wc -c < "$TEMP_RESPONSE")
+  if [ $RESPONSE_SIZE -eq 0 ]; then
+    printf "🐕 Error: Received empty response from API\n"
+    RETRY_COUNT=$((RETRY_COUNT + 1))
+    continue  # Try again
+  fi
+  
+  # Check if the response is valid JSON
+  if ! jq . "$TEMP_RESPONSE" > /dev/null 2>&1; then
+    printf "🐕 Error: Invalid JSON response\n"
+    if [ ! -z "$DEBUG" ]; then
+      printf "Response content:\n"
+      cat "$TEMP_RESPONSE"
+    fi
+    RETRY_COUNT=$((RETRY_COUNT + 1))
+    continue  # Try again
+  fi
+  
+  # Check for API error response
+  if jq -e 'has("detail")' "$TEMP_RESPONSE" > /dev/null 2>&1; then
+    ERROR_MSG=$(jq -r '.detail' "$TEMP_RESPONSE")
+    printf "🐕 Error from API: %s\n" "$ERROR_MSG"
+    RETRY_COUNT=$((RETRY_COUNT + 1))
+    continue  # Try again
+  fi
+  
+  # Check if we have all required fields
+  if ! jq -e 'has("command") and has("summary") and has("sections") and has("risk_level")' "$TEMP_RESPONSE" > /dev/null 2>&1; then
+    printf "🐕 Error: Incomplete response missing required fields\n"
+    RETRY_COUNT=$((RETRY_COUNT + 1))
+    continue  # Try again
+  fi
+  
+  # If we got here, the API call was successful
+  SUCCESS=true
+  break
+done
 
-# Check for API error response
-if jq -e 'has("detail")' "$TEMP_RESPONSE" > /dev/null 2>&1; then
-  ERROR_MSG=$(jq -r '.detail' "$TEMP_RESPONSE")
-  printf "🐕 Error from API: %s\n" "$ERROR_MSG"
-  
-  # Clean up temp files
-  rm -f "$TEMP_JSON" "$TEMP_RESPONSE"
-  
+# Check if we succeeded after retries
+if [ "$SUCCESS" = false ]; then
+  printf "🐕 Error: Failed to get command explanation after %d attempts\n" $MAX_RETRIES
   printf "Would you like to execute the command anyway? [y/N] "
   read -r CONFIRM
   if [[ "$CONFIRM" == "y" || "$CONFIRM" == "Y" ]]; then
@@ -143,16 +176,13 @@ case "$RISK_LEVEL" in
     ;;
 esac
 
-# Display sections without trying to format in jq
+# Display sections
 SECTIONS_COUNT=$(jq '.sections | length' "$TEMP_RESPONSE")
 for i in $(seq 0 $((SECTIONS_COUNT-1))); do
   TITLE=$(jq -r ".sections[$i].title" "$TEMP_RESPONSE")
   CONTENT=$(jq -r ".sections[$i].content" "$TEMP_RESPONSE")
   printf "\n\033[1m%s:\033[0m\n%s\n" "$TITLE" "$CONTENT"
 done
-
-# Clean up temp files
-rm -f "$TEMP_JSON" "$TEMP_RESPONSE"
 
 # Ask for confirmation
 printf "\nWould you like to execute this command? [Y/n] "
@@ -163,3 +193,6 @@ if [[ ! "$CONFIRM" =~ ^[nN]$ ]]; then
   printf "\nExecuting command...\n\n"
   eval "$COMMAND"
 fi
+
+# Exit with success
+exit 0

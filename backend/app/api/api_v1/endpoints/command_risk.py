@@ -69,7 +69,6 @@ async def explain_command(command_data: CommandExplainRequest):
     
     # Get command explanation from OpenAI
     explanation = await openai_service.explain_command(command_data)
-    print(explanation)
 
     # If high risk or critical, also send alert via Telegram
     if explanation.risk_level.numeric_value >= settings.TELEGRAM_RISK_THRESHOLD.numeric_value:
