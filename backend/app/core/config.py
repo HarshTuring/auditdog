@@ -25,6 +25,9 @@ class Settings(BaseSettings):
     # DATABASE_URL: Optional[PostgresDsn] = None
     SQLALCHEMY_DATABASE_URI: Optional[str] = None
 
+    OPENAI_API_KEY: str =""
+
+
     @computed_field
     @property
     def DATABASE_URL(self) -> str:

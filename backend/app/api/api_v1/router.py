@@ -1,12 +1,14 @@
+# Update backend/app/api/api_v1/router.py
 from fastapi import APIRouter
 
-from app.api.api_v1.endpoints import events, agent_integration
+from app.api.api_v1.endpoints import events, agent_integration, command_risk
 
 api_router = APIRouter()
 
 # Include route modules
 api_router.include_router(events.router)
 api_router.include_router(agent_integration.router)
+api_router.include_router(command_risk.router)  # Add the new command_risk router
 
 @api_router.get("/")
 async def root():
