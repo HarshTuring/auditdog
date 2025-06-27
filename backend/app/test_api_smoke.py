@@ -71,3 +71,19 @@ def test_commands_risk_assessment_high_risk():
     assert "risk_level" in data
     assert data["risk_level"] in ["critical", "high", "medium", "low", "minimal"]
     assert "reason" in data
+
+def test_commands_explain():
+    client = TestClient(app)
+    payload = {
+        "command": "ls",
+        "arguments": "-l",
+        "username": "testuser",
+        "working_directory": "/home/testuser"
+    }
+    response = client.post("/api/v1/commands/explain", json=payload)
+    assert response.status_code == 200
+    data = response.json()
+    assert "command" in data
+    assert "summary" in data
+    assert "sections" in data
+    assert "risk_level" in data
