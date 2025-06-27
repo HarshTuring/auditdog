@@ -48,3 +48,22 @@ class CommandRiskResponse(BaseModel):
     """Response schema for command risk assessment."""
     risk_level: RiskLevel = Field(..., description="Assessed risk level of the command")
     reason: str = Field(..., description="Explanation for the risk assessment")
+
+class ExplanationSection(BaseModel):
+    """A section of the command explanation."""
+    title: str = Field(..., description="Title of the explanation section")
+    content: str = Field(..., description="Content of the explanation section")
+
+
+class CommandExplainRequest(CommandBase):
+    """Request schema for command explanation."""
+    context: Optional[str] = Field(None, description="Optional context about execution environment")
+
+
+class CommandExplainResponse(BaseModel):
+    """Response schema for command explanation."""
+    command: str = Field(..., description="Command that was explained")
+    summary: str = Field(..., description="Brief summary of what the command does")
+    sections: list[ExplanationSection] = Field(..., description="Detailed explanation sections")
+    risk_level: RiskLevel = Field(..., description="Risk level assessment")
+    risk_explanation: Optional[str] = Field(None, description="Explanation of identified risks")

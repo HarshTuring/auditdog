@@ -6,7 +6,7 @@ from app.services.openai_service import OpenAIService
 from datetime import datetime
 from typing import Dict, Any, Optional
 
-from app.schemas.command import CommandRiskRequest, CommandRiskResponse, RiskLevel
+from app.schemas.command import CommandRiskRequest, CommandRiskResponse, RiskLevel, CommandExplainResponse, CommandExplainRequest
 from app.services.openai_service import OpenAIService
 from app.services.telegram_service import TelegramService
 from app.core.config import settings
@@ -54,3 +54,30 @@ async def test_telegram_notification():
     """
     telegram_service = TelegramService()
     return await telegram_service.test_notification()
+
+@router.post("/explain", response_model=CommandExplainResponse)
+async def explain_command(command_data: CommandExplainRequest):
+    """
+    Generate a detailed explanation of a shell command.
+    
+    This endpoint uses OpenAI to analyze a command and provide a structured
+    explanation of what it does, how it works, and any security implications.
+    
+    Returns a detailed explanation with sections and risk assessment.
+    """
+    openai_service = OpenAIService()
+    
+    # Get command explanation from OpenAI
+    explanation = await openai_service.explain_command(command_data)
+    print(explanation)
+
+    # If high risk or critical, also send alert via Telegram
+    if explanation.risk_level.numeric_value >= settings.TELEGRAM_RISK_THRESHOLD.numeric_value:
+        # Create a risk response for the alert
+        risk_assessment = CommandRiskResponse(
+            risk_level=explanation.risk_level,
+            reason=explanation.risk_explanation or "High risk command detected during explanation request"
+        )
+
+    
+    return explanation
