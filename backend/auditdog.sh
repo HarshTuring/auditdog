@@ -1,19 +1,30 @@
+if [ ! -z "$DEBUG" ]; then
+  set -x
+fi
+
+# Configuration
+API_URL="http://localhost:8000/api/v1/commands/explain"
+TIMEOUT=15  # seconds
+
+# Get the command to explain (everything after auditdog)
 COMMAND="$@"
 
-# Extract the actual command and arguments (stripping 'auditdog')
+# Extract the actual command and arguments
 COMMAND_PARTS=($COMMAND)
 CMD=${COMMAND_PARTS[0]}
 ARGS="${COMMAND#$CMD}"
+ARGS="${ARGS## }"  # Trim leading space
 
 # Get current username and working directory
 USERNAME=$(whoami)
 WORKING_DIR=$(pwd)
 
-# API endpoint URL
-API_URL="http://localhost:8000/api/v1/commands/explain"
+# Create a temporary file for the JSON payload
+TEMP_JSON=$(mktemp)
+TEMP_RESPONSE=$(mktemp)
 
 # Prepare the JSON payload
-JSON_PAYLOAD=$(cat << EOF
+cat > "$TEMP_JSON" << EOF
 {
   "command": "$CMD",
   "arguments": "$ARGS",
@@ -22,16 +33,75 @@ JSON_PAYLOAD=$(cat << EOF
   "working_directory": "$WORKING_DIR"
 }
 EOF
-)
 
-# Make the API request
-RESPONSE=$(curl -s -X POST "$API_URL" \
-  -H "Content-Type: application/json" \
-  -d "$JSON_PAYLOAD")
+# Print debug info if enabled
+if [ ! -z "$DEBUG" ]; then
+  echo "Debug: API URL = $API_URL"
+  echo "Debug: JSON payload:"
+  cat "$TEMP_JSON"
+fi
 
-# Check if the request failed
-if [ $? -ne 0 ] || [[ "$RESPONSE" == *"error"* ]]; then
-  echo "🐕 Error: Failed to get command explanation"
+# Make the API request and save response to a temporary file
+if [ ! -z "$DEBUG" ]; then
+  curl -v -s -m "$TIMEOUT" -X POST "$API_URL" \
+    -H "Content-Type: application/json" \
+    -d @"$TEMP_JSON" > "$TEMP_RESPONSE" 2>&1
+  CURL_STATUS=$?
+else
+  curl -s -m "$TIMEOUT" -X POST "$API_URL" \
+    -H "Content-Type: application/json" \
+    -d @"$TEMP_JSON" > "$TEMP_RESPONSE" 2>&1
+  CURL_STATUS=$?
+fi
+
+# Check if curl command succeeded
+if [ $CURL_STATUS -ne 0 ]; then
+  echo "🐕 Error: Failed to connect to AuditDog API (curl error $CURL_STATUS)"
+  
+  if [ $CURL_STATUS -eq 7 ]; then
+    echo "Could not connect to server. Is the API running?"
+  elif [ $CURL_STATUS -eq 28 ]; then
+    echo "Connection timed out. Server might be overloaded or unreachable."
+  fi
+  
+  # Clean up temp files
+  rm -f "$TEMP_JSON" "$TEMP_RESPONSE"
+  
+  echo "Would you like to execute the command anyway? [y/N]"
+  read -r CONFIRM
+  if [[ "$CONFIRM" == "y" || "$CONFIRM" == "Y" ]]; then
+    eval "$COMMAND"
+  fi
+  exit 1
+fi
+
+# Get response content
+RESPONSE=$(cat "$TEMP_RESPONSE")
+
+# Check if the response is valid JSON
+if ! jq . "$TEMP_RESPONSE" > /dev/null 2>&1; then
+  echo "🐕 Error: Invalid JSON response from API"
+  echo "Response: $RESPONSE"
+  
+  # Clean up temp files
+  rm -f "$TEMP_JSON" "$TEMP_RESPONSE"
+  
+  echo "Would you like to execute the command anyway? [y/N]"
+  read -r CONFIRM
+  if [[ "$CONFIRM" == "y" || "$CONFIRM" == "Y" ]]; then
+    eval "$COMMAND"
+  fi
+  exit 1
+fi
+
+# Check for API error response
+if jq -e 'has("detail")' "$TEMP_RESPONSE" > /dev/null 2>&1; then
+  ERROR_MSG=$(jq -r '.detail' "$TEMP_RESPONSE")
+  echo "🐕 Error from API: $ERROR_MSG"
+  
+  # Clean up temp files
+  rm -f "$TEMP_JSON" "$TEMP_RESPONSE"
+  
   echo "Would you like to execute the command anyway? [y/N]"
   read -r CONFIRM
   if [[ "$CONFIRM" == "y" || "$CONFIRM" == "Y" ]]; then
@@ -41,8 +111,8 @@ if [ $? -ne 0 ] || [[ "$RESPONSE" == *"error"* ]]; then
 fi
 
 # Parse and display the command explanation
-SUMMARY=$(echo "$RESPONSE" | jq -r '.summary')
-RISK_LEVEL=$(echo "$RESPONSE" | jq -r '.risk_level')
+SUMMARY=$(jq -r '.summary' "$TEMP_RESPONSE")
+RISK_LEVEL=$(jq -r '.risk_level' "$TEMP_RESPONSE")
 
 # Display header with formatting
 echo -e "\n🐕 \033[1mAUDITDOG COMMAND EXPLANATION\033[0m"
@@ -72,7 +142,10 @@ case "$RISK_LEVEL" in
 esac
 
 # Display sections
-echo "$RESPONSE" | jq -r '.sections[] | "\n\033[1m\(.title):\033[0m\n\(.content)"'
+jq -r '.sections[] | "\n\033[1m\(.title):\033[0m\n\(.content)"' "$TEMP_RESPONSE"
+
+# Clean up temp files
+rm -f "$TEMP_JSON" "$TEMP_RESPONSE"
 
 # Ask for confirmation
 echo -e "\nWould you like to execute this command? [Y/n]"
