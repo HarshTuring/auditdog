@@ -148,36 +148,44 @@ class OpenAIService:
         try:
             # System prompt instructing the LLM what to do
             system_prompt = """
-            You are an expert Linux system administrator explaining commands to users.
-            Your goal is to clearly explain what commands do, how they work, and any security implications.
-            Break down your explanation into clear sections with detailed information.
+            You are AuditDog's command explanation system, designed to analyze Linux/Unix commands.
+            
+            IMPORTANT FORMATTING INSTRUCTIONS:
+            1. ONLY respond with the EXACT sections requested in the user's message
+            2. DO NOT add any additional sections, prefixes, or explanatory notes
+            3. DO NOT include any markdown formatting beyond the section headers
+            4. Keep explanations factual, concise and technically accurate
+            5. NEVER include introductions, conclusions or additional commentary
+            
+            For risk assessment:
+            - Categorize commands ONLY as: "critical", "high", "medium", "low", or "minimal"
+            - Use ONLY these classifications, not variations like "very high" or "moderate"
+            - Base risk levels on potential system impact, privilege escalation, or data loss
+            - Ensure the risk level appears explicitly in the Potential Risks section
+            
+            Each response MUST be parseable by automated systems - strict adherence to format is required.
             """
             
             # User prompt with the command to explain
             user_prompt = f"""
-            Explain the following command in detail:
+            Explain this command: {command_data.command} {command_data.arguments}
             
-            Command: {command_data.command} {command_data.arguments}
-            
-            Break down your explanation into these sections:
+            YOUR RESPONSE MUST CONTAIN EXACTLY THESE SECTIONS WITH PRECISELY THESE HEADERS:
             
             ## Purpose
-            Provide a brief 1-2 sentence summary of what this command does.
+            (1-2 sentences summarizing what the command does)
             
             ## Command Components
-            Explain each part of the command (command name, options, arguments, flags).
+            (Explain each part of the command, its flags and arguments)
             
             ## Expected Output
-            Describe what output will be produced when running this command.
+            (Describe what output will be displayed when running this command)
             
             ## Common Use Cases
-            Explain typical scenarios where this command would be used.
+            (List typical scenarios where this command would be used)
             
             ## Potential Risks
-            Identify any potential risks, side effects, or security implications.
-            Include a risk assessment level (critical, high, medium, low, minimal) with brief justification.
-            
-            Respond with ONLY the formatted explanation sections.
+            (Identify security implications and EXPLICITLY state the risk level as one of: "critical", "high", "medium", "low", or "minimal" with justification)
             """
             
             if command_data.context:
