@@ -14,14 +14,54 @@ RETRY_DELAY=1  # seconds between retries
 CACHE_DIR="$HOME/.auditdog/cache"
 CACHE_FILE="$CACHE_DIR/command_explanations.json"
 MAX_CACHE_ENTRIES=100  # Maximum number of cached entries
+CACHE_EXPIRY_DAYS=7    # Cache expires after 7 days
 
 # Create cache directory if it doesn't exist
 mkdir -p "$CACHE_DIR"
 
-# Initialize cache file if it doesn't exist
-if [ ! -f "$CACHE_FILE" ]; then
-  echo "{}" > "$CACHE_FILE"  # Empty JSON object
-fi
+# Function to check and manage cache expiration
+manage_cache_expiration() {
+  # Initialize cache file if it doesn't exist
+  if [ ! -f "$CACHE_FILE" ]; then
+    echo "{}" > "$CACHE_FILE"  # Empty JSON object
+    if [ ! -z "$DEBUG" ]; then
+      printf "Debug: Created new cache file\n"
+    fi
+    return 0
+  fi
+  
+  # Check cache file age
+  local current_time=$(date +%s)
+  local file_modified_time=$(stat -c %Y "$CACHE_FILE" 2>/dev/null || stat -f %m "$CACHE_FILE" 2>/dev/null)
+  
+  if [ -z "$file_modified_time" ]; then
+    # If we can't get file time, reset cache to be safe
+    printf "Warning: Unable to determine cache age, resetting cache\n"
+    echo "{}" > "$CACHE_FILE"
+    return 0
+  fi
+  
+  local age_seconds=$((current_time - file_modified_time))
+  local expiry_seconds=$((CACHE_EXPIRY_DAYS * 86400))  # Convert days to seconds
+  
+  if [ "$age_seconds" -gt "$expiry_seconds" ]; then
+    # Cache is older than expiry period, reset it
+    if [ ! -z "$DEBUG" ]; then
+      printf "Debug: Cache is %d days old, resetting\n" $((age_seconds / 86400))
+    fi
+    echo "{}" > "$CACHE_FILE"
+    printf "Notice: Command cache has been reset (older than %d days)\n" $CACHE_EXPIRY_DAYS
+    return 0
+  fi
+  
+  if [ ! -z "$DEBUG" ]; then
+    printf "Debug: Cache age is %d days\n" $((age_seconds / 86400))
+  fi
+  return 0
+}
+
+# Check and manage cache expiration
+manage_cache_expiration
 
 # Get the command to explain (everything after auditdog)
 COMMAND="$@"
@@ -73,6 +113,10 @@ check_cache() {
 get_from_cache() {
   local cmd_key="$1"
   jq ".[\"$cmd_key\"]" "$CACHE_FILE" > "$TEMP_RESPONSE"
+  
+  # Update cache file's modification time (touch the file)
+  # This ensures frequently used cache doesn't expire
+  touch "$CACHE_FILE"
 }
 
 # Function to add explanation to cache
@@ -85,27 +129,31 @@ add_to_cache() {
     printf "Debug: Adding to cache: %s\n" "$cmd_key"
   fi
   
-  # Update cache with new entry
+  # Update cache with new entry, including timestamp
   jq --arg key "$cmd_key" --slurpfile content "$TEMP_RESPONSE" \
     '.[$key] = $content[0]' "$CACHE_FILE" > "$tmp_cache_file"
     
   # Handle cache size limits (remove oldest entries if needed)
   CACHE_SIZE=$(jq 'length' "$tmp_cache_file")
   if [ "$CACHE_SIZE" -gt "$MAX_CACHE_ENTRIES" ]; then
-    # Get list of keys sorted by last access time (we'll need to add this metadata)
-    # For now, just remove a random element to avoid exceeding size
+    # Remove oldest entries to maintain cache size
     jq 'to_entries | sort_by(.key) | .[1:] | from_entries' "$tmp_cache_file" > "$CACHE_FILE"
   else
     # Replace cache with updated version
     mv "$tmp_cache_file" "$CACHE_FILE"
   fi
+  
+  # Remove the temporary cache file if it still exists
+  [ -f "$tmp_cache_file" ] && rm -f "$tmp_cache_file"
 }
 
 # Check if command is already in cache
 if check_cache "$CACHE_KEY"; then
   get_from_cache "$CACHE_KEY"
   SUCCESS=true
+  CACHE_HIT=true
 else
+  CACHE_HIT=false
   # Prepare the JSON payload for API request
   cat > "$TEMP_JSON" << EOF
 {
@@ -226,7 +274,11 @@ RISK_LEVEL=$(jq -r '.risk_level' "$TEMP_RESPONSE")
 
 # Display header with formatting
 printf "\n🐕 \033[1mAUDITDOG COMMAND EXPLANATION\033[0m\n"
-printf "Command: \033[1m%s\033[0m\n" "$COMMAND"
+if [ "$CACHE_HIT" = true ]; then
+  printf "Command: \033[1m%s\033[0m [cached]\n" "$COMMAND"
+else
+  printf "Command: \033[1m%s\033[0m\n" "$COMMAND"
+fi
 printf "\n\033[1mSummary:\033[0m %s\n" "$SUMMARY"
 
 # Display risk level with appropriate color
