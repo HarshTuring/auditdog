@@ -74,7 +74,7 @@ class OpenAIService:
             }
             
             payload = {
-                "model": "gpt-4",  # Or other suitable model
+                "model": "gpt-4.1-nano",  # Or other suitable model
                 "messages": [
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt}

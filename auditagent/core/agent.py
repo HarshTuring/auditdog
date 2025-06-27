@@ -86,8 +86,34 @@ class AuditDogAgent:
                 arguments = event.get('arguments', '')
                 working_dir = event.get('working_directory', '')
                 
+                # Get risk assessment info if available
+                risk_level = event.get('risk_level', 'unknown')
+                risk_reason = event.get('risk_reason', '')
+                
+                # Format risk level with color coding
+                risk_display = ""
+                if risk_level != 'unknown':
+                    # Color mapping for different risk levels
+                    color_codes = {
+                        'critical': '\033[1;31m',  # Bold Red
+                        'high': '\033[31m',        # Red
+                        'medium': '\033[33m',      # Yellow
+                        'low': '\033[32m',         # Green
+                        'minimal': '\033[36m'      # Cyan
+                    }
+                    # Reset code to return to normal terminal color
+                    reset_code = '\033[0m'
+                    
+                    # Get appropriate color or default to reset
+                    color = color_codes.get(risk_level.lower(), reset_code)
+                    risk_display = f" [{color}{risk_level.upper()}{reset_code}]"
+                
                 dir_info = f" in {working_dir}" if working_dir else ""
-                print(f"\nCommand Executed: User '{user}' ran '{command} {arguments}'{dir_info}")
+                print(f"\nCommand Executed{risk_display}: User '{user}' ran '{command} {arguments}'{dir_info}")
+                
+                # Show risk reason if available
+                if risk_reason:
+                    print(f"Risk Assessment: {risk_reason}")
             else:
                 print(f"\nUnknown event: {event}")
                 

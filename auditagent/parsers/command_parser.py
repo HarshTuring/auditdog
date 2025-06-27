@@ -4,12 +4,16 @@ from datetime import datetime
 from typing import Dict, Any, Optional, List
 
 from .base import BaseParser
+import asyncio
+from auditagent.api.client import ApiClient  # Import our new API client
+
 
 class AuditdCommandParser(BaseParser):
     """Parser for auditd log entries related to command execution."""
     
-    def __init__(self, debug=False):
+    def __init__(self, debug=False, api_client=None):
         self.debug = debug
+        self.api_client = api_client
         # Track partial command events by ID
         self.partial_events = {}
         # Event cleanup timer
@@ -156,6 +160,22 @@ class AuditdCommandParser(BaseParser):
                 # Get username - prefer the name from UID info if available
                 username = event.get('uid_name', self._get_username_from_uid(event.get('uid', '0')))
                 
+                # System/internal command filtering
+                # Do not emit events for commands run by root (uid 0) or known system daemons
+                system_users = {'root', 'systemd', 'daemon', 'syslog', 'messagebus', 'nobody'}
+                system_commands = {'systemd', 'init', 'cron', 'rsyslogd', 'auditd', 'dbus-daemon', 'agetty', 'login', 'sshd', 'bash', 'sh'}
+                if (
+                    username in system_users or
+                    event.get('uid', '') == '0' or
+                    event.get('command', '') in system_commands or
+                    event.get('executable', '') in system_commands or
+                    event.get('comm', '') in system_commands
+                ):
+                    if self.debug:
+                        print(f"DEBUG: Skipping system/internal command: {username} {event.get('command', '')}")
+                    del self.partial_events[event_id]
+                    return None
+                
                 # Create a command event
                 command_str = event.get('command', event.get('executable', 'unknown'))
                 args_str = ' '.join(event.get('args', []))
@@ -190,8 +210,37 @@ class AuditdCommandParser(BaseParser):
                     }
                 }
                 
+                # If we have an API client, assess the risk
+                if self.api_client:
+                    try:
+                        # Create a future for the API call to avoid blocking
+                        loop = asyncio.get_event_loop()
+                        risk_future = asyncio.run_coroutine_threadsafe(
+                            self.api_client.assess_command_risk(command_event),
+                            loop
+                        )
+                        
+                        # Wait for result with a timeout
+                        risk_assessment = risk_future.result(timeout=5)
+                        
+                        if risk_assessment:
+                            # Add risk data to the command event
+                            command_event['risk_level'] = risk_assessment.get('risk_level', 'unknown')
+                            command_event['risk_reason'] = risk_assessment.get('reason', '')
+                            
+                            if self.debug:
+                                print(f"DEBUG: Command risk assessed as {command_event['risk_level']}")
+                    except (asyncio.TimeoutError, asyncio.CancelledError):
+                        if self.debug:
+                            print("DEBUG: Risk assessment timed out")
+                    except Exception as e:
+                        if self.debug:
+                            print(f"DEBUG: Error in risk assessment: {str(e)}")
+                
                 # Clean up the partial event
                 del self.partial_events[event_id]
+                
+                # return command_event
                 
                 return command_event
                 

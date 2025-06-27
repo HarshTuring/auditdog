@@ -62,6 +62,10 @@ async def main():
     parser.add_argument('--auditd-log', type=str, 
                         help='Path to the auditd log file (default: /var/log/audit/audit.log)',
                         default='/var/log/audit/audit.log')
+    parser.add_argument('--api-url', type=str,
+                    help='URL of the AuditDog API for risk assessment (e.g., http://localhost:8000/api/v1)',
+                    default=None)
+    
     args = parser.parse_args()
     
     # Set log level based on debug flag
@@ -146,7 +150,13 @@ async def main():
     )
     agent.add_watcher(ssh_watcher)
 
-    command_parser = AuditdCommandParser(debug=debug)
+    api_client = None
+    if args.api_url:
+        api_client = ApiClient(args.api_url)
+        print(f"Using API for command risk assessment: {args.api_url}")
+
+    # Add the command parser with API client
+    command_parser = AuditdCommandParser(debug=debug, api_client=api_client)
     agent.add_parser(command_parser)
 
     # Add auditd log watcher if available
@@ -221,6 +231,11 @@ async def shutdown(agent):
     """Initiate graceful shutdown"""
     logger.info("Shutting down...")
     print("\nShutting down AuditDog, please wait...")
+    
+    # Clean up API client if present
+    for parser in agent.parsers:
+        if hasattr(parser, 'api_client') and parser.api_client:
+            await parser.api_client.close()
     
     # Signal all tasks to shut down
     shutdown_event.set()
