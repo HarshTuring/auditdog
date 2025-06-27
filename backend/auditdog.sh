@@ -16,6 +16,58 @@ CACHE_FILE="$CACHE_DIR/command_explanations.json"
 MAX_CACHE_ENTRIES=100  # Maximum number of cached entries
 CACHE_EXPIRY_DAYS=7    # Cache expires after 7 days
 
+# PID for the spinner animation
+SPINNER_PID=""
+
+# Function to display a spinner animation
+spinner() {
+  local frames=('⠋' '⠙' '⠹' '⠸' '⠼' '⠴' '⠦' '⠧' '⠇' '⠏')
+  local delay=0.1
+  local msg="$1"
+  
+  # Hide cursor
+  tput civis
+  
+  # Display spinner with message
+  while true; do
+    for frame in "${frames[@]}"; do
+      printf "\r\033[K%s %s" "$frame" "$msg"
+      sleep "$delay"
+    done
+  done
+  
+  # Show cursor again (this line won't be reached normally as function is killed)
+  tput cnorm
+}
+
+# Function to start the spinner
+start_spinner() {
+  local msg="$1"
+  if [ -z "$msg" ]; then
+    msg="Fetching command explanation..."
+  fi
+  
+  # Start the spinner in the background
+  spinner "$msg" &
+  SPINNER_PID=$!
+  disown
+}
+
+# Function to stop the spinner
+stop_spinner() {
+  # Kill the spinner process if it exists
+  if [ ! -z "$SPINNER_PID" ] && ps -p $SPINNER_PID > /dev/null; then
+    kill $SPINNER_PID > /dev/null 2>&1
+    SPINNER_PID=""
+    
+    # Show cursor again
+    tput cnorm
+    
+    # Clear the line
+    printf "\r\033[K"
+  fi
+}
+
 # Create cache directory if it doesn't exist
 mkdir -p "$CACHE_DIR"
 
@@ -60,6 +112,21 @@ manage_cache_expiration() {
   return 0
 }
 
+# Function to clean up temporary files and stop spinner
+cleanup() {
+  # Stop the spinner if it's running
+  stop_spinner
+  
+  # Remove temporary files
+  rm -f "$TEMP_JSON" "$TEMP_RESPONSE" 2>/dev/null
+  
+  # Show cursor in case it was hidden
+  tput cnorm 2>/dev/null
+}
+
+# Set trap to ensure cleanup on script exit
+trap cleanup EXIT INT TERM
+
 # Check and manage cache expiration
 manage_cache_expiration
 
@@ -82,14 +149,6 @@ WORKING_DIR=$(pwd)
 # Create a temporary file for the JSON payload
 TEMP_JSON=$(mktemp)
 TEMP_RESPONSE=$(mktemp)
-
-# Function to clean up temporary files
-cleanup() {
-  rm -f "$TEMP_JSON" "$TEMP_RESPONSE"
-}
-
-# Set trap to ensure cleanup on script exit
-trap cleanup EXIT
 
 # Function to check if command explanation is in cache
 check_cache() {
@@ -149,7 +208,9 @@ add_to_cache() {
 
 # Check if command is already in cache
 if check_cache "$CACHE_KEY"; then
+  start_spinner "Retrieving explanation from cache..."
   get_from_cache "$CACHE_KEY"
+  stop_spinner
   SUCCESS=true
   CACHE_HIT=true
 else
@@ -179,26 +240,39 @@ EOF
   # Retry loop
   while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
     if [ $RETRY_COUNT -gt 0 ]; then
+      stop_spinner
       printf "Retry attempt %d of %d...\n" $RETRY_COUNT $MAX_RETRIES
       sleep $RETRY_DELAY
       # Increase delay for subsequent retries (exponential backoff)
       RETRY_DELAY=$((RETRY_DELAY * 2))
     fi
     
+    # Start the spinner with appropriate message
+    if [ $RETRY_COUNT -eq 0 ]; then
+      start_spinner "AuditDog is analyzing your command..."
+    else
+      start_spinner "Retrying command analysis..."
+    fi
+    
     # Make the API request
     if [ ! -z "$DEBUG" ]; then
+      stop_spinner
       printf "Calling API...\n"
       curl -v -s -m "$TIMEOUT" -X POST "$API_URL" \
         -H "Content-Type: application/json" \
         -d @"$TEMP_JSON" > "$TEMP_RESPONSE" 2>&1
       CURL_STATUS=$?
       printf "Curl status: %d\n" $CURL_STATUS
+      start_spinner "Continuing analysis..."
     else
       curl -s -m "$TIMEOUT" -X POST "$API_URL" \
         -H "Content-Type: application/json" \
         -d @"$TEMP_JSON" > "$TEMP_RESPONSE" 2>&1
       CURL_STATUS=$?
     fi
+    
+    # Stop the spinner
+    stop_spinner
     
     # Check if curl command succeeded
     if [ $CURL_STATUS -ne 0 ]; then
@@ -249,7 +323,9 @@ EOF
     fi
     
     # Add response to cache
+    start_spinner "Caching explanation for future use..."
     add_to_cache "$CACHE_KEY"
+    stop_spinner
     
     # If we got here, the API call was successful
     SUCCESS=true
@@ -275,7 +351,7 @@ RISK_LEVEL=$(jq -r '.risk_level' "$TEMP_RESPONSE")
 # Display header with formatting
 printf "\n🐕 \033[1mAUDITDOG COMMAND EXPLANATION\033[0m\n"
 if [ "$CACHE_HIT" = true ]; then
-  printf "Command: \033[1m%s\033[0m [cached]\n" "$COMMAND"
+  printf "Command: \033[1m%s\033[0m \033[2m[cached]\033[0m\n" "$COMMAND"
 else
   printf "Command: \033[1m%s\033[0m\n" "$COMMAND"
 fi
