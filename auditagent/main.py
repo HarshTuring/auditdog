@@ -16,6 +16,8 @@ from auditagent.storage.json_storage import JSONFileStorage
 
 from auditagent.parsers.command_parser import AuditdCommandParser
 
+from auditagent.api.client import ApiClient
+
 
 # Set up logging
 logging.basicConfig(
