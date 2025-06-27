@@ -31,7 +31,7 @@ class Settings(BaseSettings):
 
     TELEGRAM_BOT_TOKEN: str = ""
     TELEGRAM_CHAT_IDS: List[int] = []
-    TELEGRAM_RISK_THRESHOLD: RiskLevel = RiskLevel.HIGH  # Only send alerts for HIGH and CRITICAL
+    TELEGRAM_RISK_THRESHOLD: RiskLevel = RiskLevel.MEDIUM
     TELEGRAM_ENABLED: bool = True
 
     @computed_field

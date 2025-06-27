@@ -12,6 +12,18 @@ class RiskLevel(str, Enum):
     LOW = "low"
     MINIMAL = "minimal"
 
+    @property
+    def numeric_value(self) -> int:
+        """Get numeric value of risk level (0-4)."""
+        mapping = {
+            self.MINIMAL: 0,
+            self.LOW: 1,
+            self.MEDIUM: 2,
+            self.HIGH: 3,
+            self.CRITICAL: 4
+        }
+        return mapping[self]
+
 
 class CommandBase(BaseModel):
     """Base model with common fields for command events."""

@@ -15,10 +15,7 @@ router = APIRouter(prefix="/commands", tags=["commands"])
 
 
 @router.post("/risk-assessment", response_model=CommandRiskResponse)
-async def assess_command_risk(
-    command_data: CommandRiskRequest,
-    notify: Optional[bool] = Query(True, description="Whether to send notification if risk is high")
-):
+async def assess_command_risk(command_data: CommandRiskRequest,):
     """
     Analyze a command execution for security risks.
     
@@ -34,12 +31,7 @@ async def assess_command_risk(
     # Get risk assessment from OpenAI
     assessment = await openai_service.assess_command_risk(command_data)
     
-    # Check if risk exceeds threshold and notifications are enabled
-    if (notify and 
-        assessment.risk_level in [RiskLevel.CRITICAL, RiskLevel.HIGH] and
-        RiskLevel[assessment.risk_level.upper()].value >= 
-        RiskLevel[settings.TELEGRAM_RISK_THRESHOLD.upper()].value):
-        
+    if assessment.risk_level.numeric_value >= settings.TELEGRAM_RISK_THRESHOLD.numeric_value:
         # Send alert via Telegram
         await telegram_service.send_command_alert(
             command=command_data.command,
