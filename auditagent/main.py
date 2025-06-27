@@ -14,6 +14,11 @@ from auditagent.watchers.file_watcher import FileWatcher
 from auditagent.parsers.ssh_parser import SSHParser
 from auditagent.storage.json_storage import JSONFileStorage
 
+from auditagent.parsers.command_parser import AuditdCommandParser
+
+from auditagent.api.client import ApiClient
+
+
 # Set up logging
 logging.basicConfig(
     level=logging.INFO,
@@ -56,6 +61,13 @@ async def main():
                         help='Show only the last N events (with --query)')
     parser.add_argument('--stats', action='store_true',
                         help='Show event statistics')
+    parser.add_argument('--auditd-log', type=str, 
+                        help='Path to the auditd log file (default: /var/log/audit/audit.log)',
+                        default='/var/log/audit/audit.log')
+    parser.add_argument('--api-url', type=str,
+                    help='URL of the AuditDog API for risk assessment (e.g., http://localhost:8000/api/v1)',
+                    default=None)
+    
     args = parser.parse_args()
     
     # Set log level based on debug flag
@@ -130,7 +142,7 @@ async def main():
     # Add the SSH parser
     ssh_parser = SSHParser(debug=debug)
     agent.add_parser(ssh_parser)
-    
+
     # Add the file watcher for SSH logs
     ssh_watcher = FileWatcher(
         ssh_log_path,
@@ -139,6 +151,43 @@ async def main():
         debug=debug
     )
     agent.add_watcher(ssh_watcher)
+
+    api_client = None
+    if args.api_url:
+        api_client = ApiClient(args.api_url)
+        print(f"Using API for command risk assessment: {args.api_url}")
+
+    # Add the command parser with API client
+    command_parser = AuditdCommandParser(debug=debug, api_client=api_client)
+    agent.add_parser(command_parser)
+
+    # Add auditd log watcher if available
+    auditd_log_path = args.auditd_log
+    if os.path.exists(auditd_log_path):
+        try:
+            # Test if we can read the file
+            with open(auditd_log_path, 'r') as f:
+                f.readline()
+                
+            print(f"Monitoring auditd log file: {auditd_log_path}")
+            auditd_watcher = FileWatcher(
+                auditd_log_path,
+                agent._process_log_line,
+                seek_to_end=seek_to_end,
+                debug=debug
+            )
+            agent.add_watcher(auditd_watcher)
+        except PermissionError:
+            print(f"Cannot read {auditd_log_path} due to permission error.")
+            print("Run the agent with sudo or ensure the user has permissions to read audit logs.")
+        except Exception as e:
+            print(f"Error setting up auditd log monitoring: {e}")
+    else:
+        print("Auditd logs not found. Command execution monitoring is disabled.")
+        print("To enable command monitoring, install and configure auditd:")
+        print("  sudo apt install auditd audispd-plugins           # Debian/Ubuntu")
+        print("  sudo yum install audit audit-libs                 # RHEL/CentOS")
+        print("  sudo auditctl -a exit,always -F arch=b64 -S execve -k commands")
     
     # Set up signal handlers for graceful shutdown
     loop = asyncio.get_running_loop()
@@ -184,6 +233,11 @@ async def shutdown(agent):
     """Initiate graceful shutdown"""
     logger.info("Shutting down...")
     print("\nShutting down AuditDog, please wait...")
+    
+    # Clean up API client if present
+    for parser in agent.parsers:
+        if hasattr(parser, 'api_client') and parser.api_client:
+            await parser.api_client.close()
     
     # Signal all tasks to shut down
     shutdown_event.set()
@@ -249,6 +303,13 @@ def query_stored_events(storage, args):
             user = event.get('user', 'unknown')
             ip = event.get('ip_address', 'unknown')
             print(f"{timestamp} - Invalid User: '{user}' from {ip}")
+        elif event_type == 'command_execution':
+            user = event.get('user', 'unknown')
+            command = event.get('command', 'unknown')
+            arguments = event.get('arguments', '')
+            working_dir = event.get('working_directory', '')
+            dir_info = f" in {working_dir}" if working_dir else ""
+            print(f"{timestamp} - Command: User '{user}' ran '{command} {arguments}'{dir_info}")
         else:
             print(f"{timestamp} - {event_type}: {event}")
             

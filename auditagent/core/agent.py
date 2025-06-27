@@ -61,14 +61,14 @@ class AuditDogAgent:
                 user = event.get('user', 'unknown user')
                 
                 print(f"\nSSH Login Detected: User '{user}' logged in from {ip_address}" + 
-                      (f" using {auth_method}" if auth_method != 'unknown method' else ""))
+                    (f" using {auth_method}" if auth_method != 'unknown method' else ""))
             elif event_type == 'ssh_login_failed':
                 user = event.get('user', 'unknown user')
                 ip_address = event.get('ip_address', 'unknown IP')
                 auth_method = event.get('auth_method', 'unknown method')
                 
                 print(f"\nFailed SSH Login: User '{user}' failed to log in from {ip_address}" + 
-                      (f" using {auth_method}" if auth_method != 'unknown method' else ""))
+                    (f" using {auth_method}" if auth_method != 'unknown method' else ""))
             elif event_type == 'ssh_invalid_user':
                 user = event.get('user', 'unknown')
                 ip_address = event.get('ip_address', 'unknown IP')
@@ -80,6 +80,40 @@ class AuditDogAgent:
                     print(f"\nSSH Connection Closed: User '{user}' from {ip_address}")
                 else:
                     print(f"\nSSH Connection Closed: {ip_address}")
+            elif event_type == 'command_execution':
+                user = event.get('user', 'unknown user')
+                command = event.get('command', 'unknown command')
+                arguments = event.get('arguments', '')
+                working_dir = event.get('working_directory', '')
+                
+                # Get risk assessment info if available
+                risk_level = event.get('risk_level', 'unknown')
+                risk_reason = event.get('risk_reason', '')
+                
+                # Format risk level with color coding
+                risk_display = ""
+                if risk_level != 'unknown':
+                    # Color mapping for different risk levels
+                    color_codes = {
+                        'critical': '\033[1;31m',  # Bold Red
+                        'high': '\033[31m',        # Red
+                        'medium': '\033[33m',      # Yellow
+                        'low': '\033[32m',         # Green
+                        'minimal': '\033[36m'      # Cyan
+                    }
+                    # Reset code to return to normal terminal color
+                    reset_code = '\033[0m'
+                    
+                    # Get appropriate color or default to reset
+                    color = color_codes.get(risk_level.lower(), reset_code)
+                    risk_display = f" [{color}{risk_level.upper()}{reset_code}]"
+                
+                dir_info = f" in {working_dir}" if working_dir else ""
+                print(f"\nCommand Executed{risk_display}: User '{user}' ran '{command} {arguments}'{dir_info}")
+                
+                # Show risk reason if available
+                if risk_reason:
+                    print(f"Risk Assessment: {risk_reason}")
             else:
                 print(f"\nUnknown event: {event}")
                 
@@ -87,7 +121,7 @@ class AuditDogAgent:
             print("-" * 60)
         except Exception as e:
             logger.error(f"Error processing event: {e}")
-            
+
     async def start(self) -> None:
         """Start the agent and all its watchers"""
         if self.running:
