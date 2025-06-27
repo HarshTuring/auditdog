@@ -4,6 +4,8 @@ from typing import List, Optional, Union
 from pydantic import AnyHttpUrl, PostgresDsn, validator, computed_field
 from pydantic_settings import BaseSettings
 from pydantic import field_validator
+from app.schemas.command import RiskLevel
+
 
 
 class Settings(BaseSettings):
@@ -27,6 +29,10 @@ class Settings(BaseSettings):
 
     OPENAI_API_KEY: str =""
 
+    TELEGRAM_BOT_TOKEN: str = ""
+    TELEGRAM_CHAT_IDS: List[int] = []
+    TELEGRAM_RISK_THRESHOLD: RiskLevel = RiskLevel.HIGH  # Only send alerts for HIGH and CRITICAL
+    TELEGRAM_ENABLED: bool = True
 
     @computed_field
     @property
