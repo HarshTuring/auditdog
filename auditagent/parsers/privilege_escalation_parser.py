@@ -17,38 +17,53 @@ class PrivilegeEscalationParser(BaseParser):
         
         if debug:
             logger.setLevel(logging.DEBUG)
-        
-        # Regular expressions for different privilege escalation patterns
-        # Simplified and more generic patterns to increase match likelihood
+            
+        # Regular expressions based on actual log format samples
         self.PATTERNS = {
-            'sudo_exec': [
-                # Sudo execution pattern - more lenient to match various formats
+            'su_authentication_failure': [
+                # Match the auth failure line pattern exactly as in the log
                 re.compile(
-                    r'sudo(?:\[\d+\])?:?\s+(?P<user>\S+)\s+:.*(?:COMMAND=(?P<command>.*))'
+                    r'(?P<timestamp>\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}.\d+[+-]\d{2}:\d{2})\s+'
+                    r'(?P<hostname>\S+)\s+su:\s+pam_unix\(su:auth\):\s+authentication failure;'
+                    r'.*ruser=(?P<user>\S+).*user=(?P<target_user>\S+)'
+                )
+            ],
+            'su_failed_attempt': [
+                # Match the FAILED SU line pattern exactly as in the log
+                re.compile(
+                    r'(?P<timestamp>\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}.\d+[+-]\d{2}:\d{2})\s+'
+                    r'(?P<hostname>\S+)\s+su\[\d+\]:\s+FAILED SU \(to (?P<target_user>\S+)\)\s+'
+                    r'(?P<user>\S+)'
+                )
+            ],
+            'su_attempt_success': [
+                # Match the successful su attempt line pattern
+                re.compile(
+                    r'(?P<timestamp>\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}.\d+[+-]\d{2}:\d{2})\s+'
+                    r'(?P<hostname>\S+)\s+su\[\d+\]:\s+\(to (?P<target_user>\S+)\)\s+'
+                    r'(?P<user>\S+)'
+                )
+            ],
+            'su_session_opened': [
+                # Match the session opened line pattern exactly as in the log
+                re.compile(
+                    r'(?P<timestamp>\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}.\d+[+-]\d{2}:\d{2})\s+'
+                    r'(?P<hostname>\S+)\s+su\[\d+\]:\s+pam_unix\(su:session\):\s+session\s+'
+                    r'opened for user\s+(?P<target_user>[^\(]+)(?:\(uid=\d+\))?\s+by\s+(?P<user>[^\(]+)'
                 )
             ],
             'sudo_auth_failure': [
-                # Sudo authentication failure pattern
+                # Match sudo authentication failure pattern
                 re.compile(
-                    r'(?:sudo|pam_unix)(?:\[\d+\])?:(?:[^:]*authentication failure|.*incorrect password)[^:]*(?:user=)?(?P<user>\S+)'
+                    r'(?P<timestamp>\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}.\d+[+-]\d{2}:\d{2})\s+'
+                    r'(?P<hostname>\S+)\s+sudo:.*authentication failure.*user=(?P<user>\S+)'
                 )
             ],
-            'su_attempt': [
-                # Su attempt pattern
+            'sudo_exec': [
+                # Match sudo execution pattern
                 re.compile(
-                    r'su(?:\[\d+\])?:(?:\s+.*)?(?:(?P<result>Successful|FAILED)\s+su\s+for|session (?P<action>opened|closed) for user)\s+(?P<target_user>\S+)(?:\s+by\s+(?P<user>\S+))?'
-                )
-            ],
-            'group_mod': [
-                # Group modification pattern
-                re.compile(
-                    r'(?:usermod|groupmod|gpasswd)(?:\[\d+\])?:.*(?:group \'(?P<group>\S+)\'|\'(?P<target_user>\S+)\' to group)'
-                )
-            ],
-            'sudoers_mod': [
-                # Direct sudoers file access pattern
-                re.compile(
-                    r'(?:vi|vim|nano|emacs|visudo|cat|more|less)(?:\[\d+\])?:.*(?:/etc/sudoers)'
+                    r'(?P<timestamp>\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}.\d+[+-]\d{2}:\d{2})\s+'
+                    r'(?P<hostname>\S+)\s+sudo(?:\[\d+\])?:\s+(?P<user>\S+)\s+:\s+.*COMMAND=(?P<command>.*)'
                 )
             ]
         }
@@ -71,11 +86,11 @@ class PrivilegeEscalationParser(BaseParser):
         if metadata is None:
             metadata = {}
             
-        # Skip lines that don't look relevant to privilege escalation to improve performance
-        # Quick pre-check to only process relevant lines
-        if not any(keyword in log_line for keyword in ['sudo', 'su:', 'su[', 'pam_unix', 'usermod', 'groupmod', 'visudo']):
+        # Quick pre-check to skip irrelevant lines
+        if not ('su[' in log_line or 'su:' in log_line or 'sudo' in log_line):
             return None
             
+        # Print all lines containing su or sudo for debugging
         if self.debug:
             logger.debug(f"Checking privilege escalation line: {log_line}")
             
@@ -94,35 +109,29 @@ class PrivilegeEscalationParser(BaseParser):
                     event = {
                         'event': 'privilege_escalation',
                         'subtype': event_type,
-                        'timestamp': datetime.now().isoformat(),
+                        'timestamp': event_data.get('timestamp'),
                         'source': metadata.get('source', 'unknown'),
                         'original_log': log_line  # Store original log for debugging
                     }
                     
                     # Add fields based on the event type
-                    if event_type == 'sudo_exec':
-                        event['user'] = event_data.get('user', 'unknown')
-                        event['command'] = event_data.get('command', '')
+                    if event_type in ['su_authentication_failure', 'su_failed_attempt']:
+                        event['user'] = event_data.get('user', '').strip('()')
+                        event['target_user'] = event_data.get('target_user', '').strip('()')
+                        event['success'] = False
+                        
+                    elif event_type in ['su_attempt_success', 'su_session_opened']:
+                        event['user'] = event_data.get('user', '').strip('()')
+                        event['target_user'] = event_data.get('target_user', '').strip('()')
                         event['success'] = True
                         
                     elif event_type == 'sudo_auth_failure':
-                        event['user'] = event_data.get('user', 'unknown')
+                        event['user'] = event_data.get('user', '')
                         event['success'] = False
                         
-                    elif event_type == 'su_attempt':
-                        event['user'] = event_data.get('user', 'unknown')
-                        event['target_user'] = event_data.get('target_user', '')
-                        event['action'] = event_data.get('action', '')
-                        result = event_data.get('result', '')
-                        event['success'] = (result == 'Successful' or event_data.get('action') == 'opened')
-                        
-                    elif event_type == 'group_mod':
-                        event['target_user'] = event_data.get('target_user', '')
-                        event['group'] = event_data.get('group', '')
-                        event['success'] = True
-                        
-                    elif event_type == 'sudoers_mod':
-                        # We can't reliably extract user from sudoers_mod patterns
+                    elif event_type == 'sudo_exec':
+                        event['user'] = event_data.get('user', '')
+                        event['command'] = event_data.get('command', '')
                         event['success'] = True
                     
                     # Check for duplicates
@@ -147,7 +156,7 @@ class PrivilegeEscalationParser(BaseParser):
         subtype = event.get('subtype', '')
         user = event.get('user', '')
         target_user = event.get('target_user', '')
-        command = event.get('command', '')[:20] # Truncate command for key
+        command = event.get('command', '')[:20] if 'command' in event else ''
         
         return f"{subtype}:{user}:{target_user}:{command}"
     
