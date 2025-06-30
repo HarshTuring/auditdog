@@ -128,7 +128,15 @@ async def main():
     agent = AuditDogAgent(debug=debug, storage=storage)
 
     print("Setting up privilege escalation monitoring...")
-    priv_esc_parser = PrivilegeEscalationParser(debug=debug)
+    
+    priv_esc_parser = PrivilegeEscalationParser(
+        debug=debug,
+        failure_threshold=3,                # Alert after 3 failures
+        failure_window_minutes=30,          # Track failures for 30 minutes
+        enable_lockout=True,                # Enable account lockout
+        lockout_minutes=1,                 # Lock accounts for 15 minutes
+        enable_termination=True             # Terminate sessions for locked users
+    )
     agent.add_parser(priv_esc_parser)
 
     # Test read a few lines to verify access

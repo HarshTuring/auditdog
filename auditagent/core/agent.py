@@ -120,7 +120,7 @@ class AuditDogAgent:
                 description = event.get('description', 'Unknown privilege escalation event')
                 
                 # Format output with colors
-                highlight = '\033[1;31m' if not success else '\033[1;33m'  # Bold Red for failure, Bold Yellow for success
+                highlight = '\033[1;31m' if not success else '\033[1;33m'
                 reset = '\033[0m'
                 
                 # Format the alert type based on subtype and success
@@ -142,9 +142,13 @@ class AuditDogAgent:
                 # Check if threshold has been exceeded
                 if event.get('threshold_exceeded', False):
                     failure_count = event.get('failure_count', 0)
-                    threshold = event.get('threshold', 3)
-                    warning_msg = f"\033[1;41m ATTEMPTS EXCEEDED \033[0m User has {failure_count} failed attempts (threshold: {threshold})"
+                    warning_msg = f"\033[1;41m ATTEMPTS EXCEEDED \033[0m User has {failure_count} failed attempts"
                     print(warning_msg)
+                    
+                # Check if user was locked out
+                if event.get('user_locked_out', False):
+                    lockout_msg = f"\033[1;44m ACCOUNT LOCKED \033[0m User has been locked out for {event.get('lockout_minutes', 15)} minutes"
+                    print(lockout_msg)
                 
                 # Print success/failure status
                 status = "\033[32m✓ Success\033[0m" if success else "\033[31m✗ Failed\033[0m"
