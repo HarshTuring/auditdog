@@ -139,6 +139,13 @@ class AuditDogAgent:
                 print(f"\n{alert_type}")
                 print(description)
                 
+                # Check if threshold has been exceeded
+                if event.get('threshold_exceeded', False):
+                    failure_count = event.get('failure_count', 0)
+                    threshold = event.get('threshold', 3)
+                    warning_msg = f"\033[1;41m ATTEMPTS EXCEEDED \033[0m User has {failure_count} failed attempts (threshold: {threshold})"
+                    print(warning_msg)
+                
                 # Print success/failure status
                 status = "\033[32m✓ Success\033[0m" if success else "\033[31m✗ Failed\033[0m"
                 print(f"Status: {status}")
