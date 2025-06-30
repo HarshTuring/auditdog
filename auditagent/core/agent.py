@@ -116,39 +116,28 @@ class AuditDogAgent:
                     print(f"Risk Assessment: {risk_reason}")
             elif event_type == 'privilege_escalation':
                 subtype = event.get('subtype', 'unknown')
-                user = event.get('user', 'unknown')
-                target_user = event.get('target_user', '')
                 success = event.get('success', False)
-                command = event.get('command', '')
+                description = event.get('description', 'Unknown privilege escalation event')
                 
                 # Format output with colors
                 highlight = '\033[1;31m' if not success else '\033[1;33m'  # Bold Red for failure, Bold Yellow for success
                 reset = '\033[0m'
                 
-                # Format message based on subtype
-                if subtype in ['su_authentication_failure', 'su_failed_attempt']:
-                    alert_type = f"{highlight}FAILED PRIVILEGE ESCALATION{reset}"
-                    message = f"User '{user}' failed to switch to '{target_user}'"
-                    
-                elif subtype in ['su_attempt_success', 'su_session_opened']:
-                    alert_type = f"{highlight}PRIVILEGE ESCALATION{reset}"
-                    message = f"User '{user}' successfully switched to '{target_user}'"
-                    
+                # Format the alert type based on subtype and success
+                if subtype == 'sudo_exec':
+                    alert_type = f"{highlight}SUDO EXECUTION{reset}"
                 elif subtype == 'sudo_auth_failure':
                     alert_type = f"{highlight}FAILED SUDO ATTEMPT{reset}"
-                    message = f"User '{user}' failed sudo authentication"
-                    
-                elif subtype == 'sudo_exec':
-                    alert_type = f"{highlight}SUDO EXECUTION{reset}"
-                    message = f"User '{user}' executed command with sudo: {command}"
-                
+                elif subtype == 'su_session_opened':
+                    alert_type = f"{highlight}PRIVILEGE ELEVATION{reset}"
+                elif subtype == 'su_authentication_failure':
+                    alert_type = f"{highlight}FAILED PRIVILEGE ELEVATION{reset}"
                 else:
                     alert_type = f"{highlight}PRIVILEGE EVENT{reset}"
-                    message = f"Type: {subtype}, User: {user}"
                 
                 # Print formatted alert
                 print(f"\n{alert_type}")
-                print(message)
+                print(description)
                 
                 # Print success/failure status
                 status = "\033[32m✓ Success\033[0m" if success else "\033[31m✗ Failed\033[0m"
