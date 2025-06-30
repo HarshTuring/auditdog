@@ -28,22 +28,6 @@ class PrivilegeEscalationParser(BaseParser):
                     r'.*ruser=(?P<user>\S+).*user=(?P<target_user>\S+)'
                 )
             ],
-            'su_failed_attempt': [
-                # Match the FAILED SU line pattern exactly as in the log
-                re.compile(
-                    r'(?P<timestamp>\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}.\d+[+-]\d{2}:\d{2})\s+'
-                    r'(?P<hostname>\S+)\s+su\[\d+\]:\s+FAILED SU \(to (?P<target_user>\S+)\)\s+'
-                    r'(?P<user>\S+)'
-                )
-            ],
-            'su_attempt_success': [
-                # Match the successful su attempt line pattern
-                re.compile(
-                    r'(?P<timestamp>\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}.\d+[+-]\d{2}:\d{2})\s+'
-                    r'(?P<hostname>\S+)\s+su\[\d+\]:\s+\(to (?P<target_user>\S+)\)\s+'
-                    r'(?P<user>\S+)'
-                )
-            ],
             'su_session_opened': [
                 # Match the session opened line pattern exactly as in the log
                 re.compile(
