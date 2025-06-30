@@ -127,16 +127,22 @@ async def main():
     # Create and configure the agent
     agent = AuditDogAgent(debug=debug, storage=storage)
 
-    # Now set up privilege escalation watchers
+    print("Setting up privilege escalation monitoring...")
+    priv_esc_parser = PrivilegeEscalationParser(debug=debug)
+    agent.add_parser(priv_esc_parser)
+
+    # Auth logs are already being monitored in most cases as they're the same files
+    # where SSH events are logged, but let's make sure we have them
     priv_esc_log_paths = [
-        '/var/log/auth.log',      # Debian/Ubuntu
-        '/var/log/secure'         # RHEL/CentOS
+        '/var/log/auth.log',     # Debian/Ubuntu
+        '/var/log/secure'        # RHEL/CentOS
     ]
 
+    # Add watchers for any auth logs not already covered by SSH logs
     for log_path in priv_esc_log_paths:
-        if os.path.exists(log_path) and os.access(log_path, os.R_OK):
+        if ssh_log_path != log_path and os.path.exists(log_path) and os.access(log_path, os.R_OK):
             try:
-                print(f"Monitoring privilege escalation events in: {log_path}")
+                print(f"Monitoring additional auth log for privilege escalation: {log_path}")
                 priv_esc_watcher = FileWatcher(
                     log_path,
                     agent._process_log_line,
@@ -145,7 +151,7 @@ async def main():
                 )
                 agent.add_watcher(priv_esc_watcher)
             except Exception as e:
-                print(f"Error setting up privilege escalation monitoring for {log_path}: {e}")
+                print(f"Error setting up monitoring for {log_path}: {e}")
 
     # Test read a few lines to verify access
     try:

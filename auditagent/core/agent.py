@@ -121,37 +121,38 @@ class AuditDogAgent:
                 success = event.get('success', False)
                 command = event.get('command', '')
                 
+                # Use ANSI colors to highlight privilege escalation events
+                color_code = '\033[1;31m' if not success else '\033[1;33m'  # Bold Red for failure, Bold Yellow for success
+                reset_code = '\033[0m'
+                privilege_msg = f"{color_code}PRIVILEGE ESCALATION{reset_code}"
+                
                 # Pretty-print the event based on its subtype
                 if subtype == 'sudo_exec':
-                    print(f"\nPrivilege Escalation: User '{user}' executed command as {target_user}: {command}")
+                    print(f"\n{privilege_msg}: User '{user}' executed command as root: {command}")
                 elif subtype == 'sudo_auth_failure':
-                    print(f"\nPrivilege Escalation Attempt Failed: User '{user}' failed sudo authentication")
+                    print(f"\n{privilege_msg}: User '{user}' failed sudo authentication")
                 elif subtype == 'su_attempt':
                     result = "succeeded" if success else "failed"
-                    print(f"\nUser Switch Attempt ({result}): '{user}' attempted to become '{target_user}'")
-                elif subtype == 'su_session' or subtype == 'sudo_session':
-                    action = event.get('action', '')
-                    if action == 'opened':
-                        print(f"\nPrivileged Session Started: For user '{target_user}'")
-                    else:
-                        print(f"\nPrivileged Session Ended: For user '{target_user}'")
-                elif subtype == 'pkexec':
-                    print(f"\nPolkit Execution: User '{user}' executed: {command}")
+                    print(f"\n{privilege_msg}: User switch attempt ({result}): '{user}' attempted to become '{target_user}'")
                 elif subtype == 'group_mod':
                     group = event.get('group', '')
-                    print(f"\nPrivilege Group Modification: User '{target_user}' added to group '{group}'")
+                    print(f"\n{privilege_msg}: User '{target_user}' added to group '{group}'")
                     if group in ('sudo', 'wheel', 'admin'):
                         print(f"SECURITY ALERT: User '{target_user}' gained administrative privileges via group membership")
                 elif subtype == 'sudoers_mod':
-                    print(f"\nSudoers File Modified: User '{user}' modified sudoers configuration using {command}")
+                    print(f"\n{privilege_msg}: Sudoers file modification detected")
                     print("SECURITY ALERT: Direct modification of sudo configuration detected")
                 else:
-                    print(f"\nPrivilege Escalation Event: {subtype} by {user}")
+                    print(f"\n{privilege_msg}: {subtype}")
                 
-                # Print success/failure status
-                status = "✅ Succeeded" if success else "❌ Failed"
+                # Print success/failure status with color
+                status = "\033[32m✓ Succeeded\033[0m" if success else "\033[31m✗ Failed\033[0m"
                 print(f"Status: {status}")
                 
+                # Print debugging info in debug mode
+                if self.debug and 'original_log' in event:
+                    print(f"Log: {event['original_log']}")
+                    
                 # Print a separator
                 print("-" * 60)
             else:
