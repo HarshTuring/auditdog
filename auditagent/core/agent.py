@@ -114,6 +114,46 @@ class AuditDogAgent:
                 # Show risk reason if available
                 if risk_reason:
                     print(f"Risk Assessment: {risk_reason}")
+            elif event_type == 'privilege_escalation':
+                subtype = event.get('subtype', 'unknown')
+                user = event.get('user', 'unknown')
+                target_user = event.get('target_user', '')
+                success = event.get('success', False)
+                command = event.get('command', '')
+                
+                # Pretty-print the event based on its subtype
+                if subtype == 'sudo_exec':
+                    print(f"\nPrivilege Escalation: User '{user}' executed command as {target_user}: {command}")
+                elif subtype == 'sudo_auth_failure':
+                    print(f"\nPrivilege Escalation Attempt Failed: User '{user}' failed sudo authentication")
+                elif subtype == 'su_attempt':
+                    result = "succeeded" if success else "failed"
+                    print(f"\nUser Switch Attempt ({result}): '{user}' attempted to become '{target_user}'")
+                elif subtype == 'su_session' or subtype == 'sudo_session':
+                    action = event.get('action', '')
+                    if action == 'opened':
+                        print(f"\nPrivileged Session Started: For user '{target_user}'")
+                    else:
+                        print(f"\nPrivileged Session Ended: For user '{target_user}'")
+                elif subtype == 'pkexec':
+                    print(f"\nPolkit Execution: User '{user}' executed: {command}")
+                elif subtype == 'group_mod':
+                    group = event.get('group', '')
+                    print(f"\nPrivilege Group Modification: User '{target_user}' added to group '{group}'")
+                    if group in ('sudo', 'wheel', 'admin'):
+                        print(f"SECURITY ALERT: User '{target_user}' gained administrative privileges via group membership")
+                elif subtype == 'sudoers_mod':
+                    print(f"\nSudoers File Modified: User '{user}' modified sudoers configuration using {command}")
+                    print("SECURITY ALERT: Direct modification of sudo configuration detected")
+                else:
+                    print(f"\nPrivilege Escalation Event: {subtype} by {user}")
+                
+                # Print success/failure status
+                status = "✅ Succeeded" if success else "❌ Failed"
+                print(f"Status: {status}")
+                
+                # Print a separator
+                print("-" * 60)
             else:
                 print(f"\nUnknown event: {event}")
                 

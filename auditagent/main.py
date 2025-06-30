@@ -18,6 +18,9 @@ from auditagent.parsers.command_parser import AuditdCommandParser
 
 from auditagent.api.client import ApiClient
 
+from auditagent.parsers.privilege_escalation_parser import PrivilegeEscalationParser
+
+
 
 # Set up logging
 logging.basicConfig(
@@ -120,7 +123,30 @@ async def main():
         
     print(f"Monitoring SSH log file: {ssh_log_path}")
     print(f"Storing events to: {storage_path}")
-    
+
+    # Create and configure the agent
+    agent = AuditDogAgent(debug=debug, storage=storage)
+
+    # Now set up privilege escalation watchers
+    priv_esc_log_paths = [
+        '/var/log/auth.log',      # Debian/Ubuntu
+        '/var/log/secure'         # RHEL/CentOS
+    ]
+
+    for log_path in priv_esc_log_paths:
+        if os.path.exists(log_path) and os.access(log_path, os.R_OK):
+            try:
+                print(f"Monitoring privilege escalation events in: {log_path}")
+                priv_esc_watcher = FileWatcher(
+                    log_path,
+                    agent._process_log_line,
+                    seek_to_end=seek_to_end,
+                    debug=debug
+                )
+                agent.add_watcher(priv_esc_watcher)
+            except Exception as e:
+                print(f"Error setting up privilege escalation monitoring for {log_path}: {e}")
+
     # Test read a few lines to verify access
     try:
         with open(ssh_log_path, 'r') as f:
@@ -135,9 +161,6 @@ async def main():
         if "Permission denied" in str(e):
             print("Hint: You may need to run this program with sudo or as root")
         return 1
-    
-    # Create and configure the agent
-    agent = AuditDogAgent(debug=debug, storage=storage)
     
     # Add the SSH parser
     ssh_parser = SSHParser(debug=debug)
