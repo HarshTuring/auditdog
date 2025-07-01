@@ -65,10 +65,10 @@ class SSHBruteForceParser(BaseParser):
             re.compile(
                 r'Invalid user (?P<user>\S+) from (?P<ip_address>\S+) port \d+'
             ),
-            # Connection closed by invalid user - matches "Connection closed by invalid user buntu 49.36.91.220 port 52628"
-            re.compile(
-                r'Connection closed by invalid user (?P<user>\S+) (?P<ip_address>\S+) port \d+'
-            ),
+            # # Connection closed by invalid user - matches "Connection closed by invalid user buntu 49.36.91.220 port 52628"
+            # re.compile(
+            #     r'Connection closed by invalid user (?P<user>\S+) (?P<ip_address>\S+) port \d+'
+            # ),
             # Failed authentication command - matches "AuthorizedKeysCommand /usr/share/.../eic_run_authorized_keys ubuntu SHA256:... failed"
             re.compile(
                 r'AuthorizedKeysCommand.*(?P<user>\S+) .* failed'
