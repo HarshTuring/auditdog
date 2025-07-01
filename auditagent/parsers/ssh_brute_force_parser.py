@@ -5,6 +5,7 @@ import logging
 from datetime import datetime, timedelta
 from typing import Dict, Any, Optional, List, Set
 import ipaddress
+import asyncio
 
 from .base import BaseParser
 
@@ -205,7 +206,30 @@ class SSHBruteForceParser(BaseParser):
                     if self.enable_blocking:
                         block_success = self._block_ip(ip_address)
                         detection_event['is_blocked'] = block_success
-                    
+                        
+                        # Send notification via API if we have access to an API client
+                        if hasattr(self, 'api_client') and self.api_client:
+                            try:
+                                # Get event loop
+                                loop = asyncio.get_event_loop()
+                                # Schedule notification
+                                asyncio.run_coroutine_threadsafe(
+                                    self.api_client.send_brute_force_alert(
+                                        ip_address=ip_address,
+                                        username=user,
+                                        failure_count=ip_failures,
+                                        threshold=self.failure_threshold,
+                                        is_blocked=block_success,
+                                        block_minutes=self.block_minutes
+                                    ), 
+                                    loop
+                                )
+                                
+                                if self.debug:
+                                    logger.debug(f"API notification scheduled for brute force from {ip_address}")
+                            except Exception as e:
+                                logger.error(f"Error scheduling notification: {str(e)}")
+                                
                     return detection_event
                 
                 # Just return the failure event

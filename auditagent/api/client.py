@@ -75,3 +75,58 @@ class ApiClient:
             logger.error(f"Unexpected error in API request: {str(e)}")
             
         return None
+    
+    async def send_brute_force_alert(
+        self, 
+        ip_address: str,
+        username: str,
+        failure_count: int,
+        threshold: int,
+        is_blocked: bool,
+        block_minutes: int = 0
+    ) -> Dict[str, Any]:
+        """
+        Send notification about an SSH brute force attack.
+        
+        Args:
+            ip_address: The attacker's IP address
+            username: The username that was targeted
+            failure_count: Number of failed attempts
+            threshold: The configured threshold that was exceeded
+            is_blocked: Whether the IP was blocked
+            block_minutes: How long the IP was blocked for (if applicable)
+            
+        Returns:
+            Response data or None if request failed
+        """
+        try:
+            session = await self.get_session()
+            
+            # Format request data
+            params = {
+                "ip_address": ip_address,
+                "username": username,
+                "failure_count": failure_count,
+                "threshold": threshold,
+                "is_blocked": is_blocked,
+                "block_minutes": block_minutes
+            }
+            
+            url = f"{self.api_url}/ssh-security/brute-force-alert"
+            
+            async with session.post(url, params=params) as response:
+                if response.status != 200:
+                    error_text = await response.text()
+                    logger.error(f"API error ({response.status}): {error_text}")
+                    return None
+                    
+                return await response.json()
+                    
+        except aiohttp.ClientError as e:
+            logger.error(f"HTTP error in notification request: {str(e)}")
+        except asyncio.TimeoutError:
+            logger.error(f"Notification request timed out after {self.timeout}s")
+        except Exception as e:
+            logger.error(f"Unexpected error in notification API request: {str(e)}")
+                
+        return None

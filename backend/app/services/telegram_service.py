@@ -154,6 +154,67 @@ class TelegramService:
                 status_code=500,
                 detail=f"Failed to send Telegram message: {str(e)}"
             )
+        
+    async def send_brute_force_alert(
+        self,
+        ip_address: str,
+        username: str,
+        failure_count: int,
+        threshold: int,
+        is_blocked: bool,
+        block_minutes: Optional[int] = 0
+    ) -> bool:
+        """
+        Send alert about an SSH brute force attempt to configured Telegram chats.
+        
+        Args:
+            ip_address: Attacker's IP address
+            username: Target username
+            failure_count: Number of failed attempts
+            threshold: Configured threshold that was exceeded
+            is_blocked: Whether the IP was blocked
+            block_minutes: How long the IP was blocked for (if applicable)
+            
+        Returns:
+            True if alert was sent successfully, False otherwise
+        """
+        # Check if Telegram notifications are enabled
+        if not self.enabled:
+            logger.debug("Telegram notifications are disabled")
+            return False
+            
+        # Check if we have required configuration
+        if not self.bot_token or not self.chat_ids:
+            logger.warning("Telegram bot token or chat IDs not configured")
+            return False
+        
+        # Create a formatted message using Markdown
+        message = (
+            f"🚨 *SSH BRUTE FORCE ATTACK DETECTED* 🚨\n\n"
+            f"*IP Address:* `{ip_address}`\n"
+            f"*Username:* `{username}`\n"
+            f"*Failed Attempts:* `{failure_count}` (threshold: {threshold})\n"
+        )
+        
+        # Add blocking information
+        if is_blocked:
+            message += f"*Status:* IP has been blocked for {block_minutes} minutes\n"
+        else:
+            message += "*Status:* IP was not blocked (blocking disabled or failed)\n"
+        
+        # Add timestamp
+        message += f"\n_Detected by AuditDog at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}_"
+        
+        # Send to all configured chat IDs
+        success = True
+        for chat_id in self.chat_ids:
+            try:
+                await self._send_message(chat_id, message)
+            except Exception as e:
+                logger.error(f"Failed to send Telegram brute force alert to chat {chat_id}: {str(e)}")
+                success = False
+        
+        return success
             
     async def test_notification(self) -> Dict[str, Any]:
         """
