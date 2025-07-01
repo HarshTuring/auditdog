@@ -161,19 +161,20 @@ class AuditDogAgent:
                 # Print separator
                 print("-" * 60)
             elif event_type == 'ssh_brute_force_attempt':
+                # This case should no longer be triggered because we're not returning individual failures
                 ip_address = event.get('ip_address', 'unknown')
                 user = event.get('username', 'unknown')
                 count = event.get('failure_count', 0)
                 
                 # Print with color coding for failed login attempts
                 print(f"\n\033[33mSSH Login Failure\033[0m: User '{user}' from {ip_address}")
-                print(f"Failures: {count}/{self.failure_threshold}")
+                print(f"Failures: {count}")
                 
             elif event_type == 'ssh_brute_force_detected':
                 ip_address = event.get('ip_address', 'unknown')
                 user = event.get('username', 'unknown')
                 count = event.get('failure_count', 0)
-                threshold = event.get('threshold', 0)
+                threshold = event.get('threshold', 0)  # Get threshold from the event itself
                 is_blocked = event.get('is_blocked', False)
                 block_minutes = event.get('block_minutes', 0)
                 
@@ -186,7 +187,6 @@ class AuditDogAgent:
                     print(f"\033[1;32mIP has been blocked\033[0m for {block_minutes} minutes")
                 else:
                     print("\033[1;33mIP was not blocked\033[0m - blocking disabled or failed")
-            
             else:
                 print(f"\nUnknown event: {event}")
                 
