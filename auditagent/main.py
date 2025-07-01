@@ -20,7 +20,7 @@ from auditagent.api.client import ApiClient
 
 from auditagent.parsers.privilege_escalation_parser import PrivilegeEscalationParser
 
-
+from auditagent.parsers.ssh_brute_force_parser import SSHBruteForceParser
 
 # Set up logging
 logging.basicConfig(
@@ -138,6 +138,17 @@ async def main():
         enable_termination=True             # Terminate sessions for locked users
     )
     agent.add_parser(priv_esc_parser)
+
+    print("Setting up SSH brute force detection...")
+    ssh_brute_force_parser = SSHBruteForceParser(
+        debug=debug,
+        failure_threshold=5,              # Block after 5 failures
+        failure_window_minutes=5,         # Within a 5 minute window
+        block_minutes=30,                 # Block for 30 minutes
+        enable_blocking=True,             # Enable automatic blocking
+        whitelist=['127.0.0.1', '192.168.1.0/24']  # Never block these IPs
+    )
+    agent.add_parser(ssh_brute_force_parser)
 
     # Test read a few lines to verify access
     try:
