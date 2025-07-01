@@ -160,6 +160,33 @@ class AuditDogAgent:
                     
                 # Print separator
                 print("-" * 60)
+            elif event_type == 'ssh_brute_force_attempt':
+                ip_address = event.get('ip_address', 'unknown')
+                user = event.get('username', 'unknown')
+                count = event.get('failure_count', 0)
+                
+                # Print with color coding for failed login attempts
+                print(f"\n\033[33mSSH Login Failure\033[0m: User '{user}' from {ip_address}")
+                print(f"Failures: {count}/{self.failure_threshold}")
+                
+            elif event_type == 'ssh_brute_force_detected':
+                ip_address = event.get('ip_address', 'unknown')
+                user = event.get('username', 'unknown')
+                count = event.get('failure_count', 0)
+                threshold = event.get('threshold', 0)
+                is_blocked = event.get('is_blocked', False)
+                block_minutes = event.get('block_minutes', 0)
+                
+                # Print with alert formatting for brute force detection
+                print(f"\n\033[1;41m SSH BRUTE FORCE ATTACK DETECTED \033[0m")
+                print(f"IP: \033[1;31m{ip_address}\033[0m attempting user: \033[1;31m{user}\033[0m")
+                print(f"Failed attempts: {count} (threshold: {threshold})")
+                
+                if is_blocked:
+                    print(f"\033[1;32mIP has been blocked\033[0m for {block_minutes} minutes")
+                else:
+                    print("\033[1;33mIP was not blocked\033[0m - blocking disabled or failed")
+            
             else:
                 print(f"\nUnknown event: {event}")
                 

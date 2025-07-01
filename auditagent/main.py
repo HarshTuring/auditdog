@@ -146,7 +146,7 @@ async def main():
         failure_window_minutes=5,         # Within a 5 minute window
         block_minutes=30,                 # Block for 30 minutes
         enable_blocking=True,             # Enable automatic blocking
-        whitelist=['127.0.0.1', '192.168.1.0/24']  # Never block these IPs
+        whitelist=['127.0.0.1', '10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16']  # Never block internal IPs
     )
     agent.add_parser(ssh_brute_force_parser)
 
