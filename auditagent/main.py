@@ -84,9 +84,6 @@ async def main():
     storage_dir = os.path.abspath(args.storage_dir)
     os.makedirs(storage_dir, exist_ok=True)
     
-    # Create storage backend
-    storage_path = os.path.join(storage_dir, 'events.json')
-    storage = JSONFileStorage(storage_path)
     
     # Query mode: display stored events and exit
     if args.query:
@@ -182,6 +179,10 @@ async def main():
     if args.api_url:
         api_client = ApiClient(args.api_url)
         print(f"Using API for command risk assessment: {args.api_url}")
+
+    # Create storage backend
+    storage_path = os.path.join(storage_dir, 'events.json')
+    storage = JSONFileStorage(storage_path, api_client=api_client)
 
     # Add the command parser with API client
     command_parser = AuditdCommandParser(debug=debug, api_client=api_client)

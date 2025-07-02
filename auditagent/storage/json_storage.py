@@ -2,25 +2,28 @@ import os
 import json
 import time
 import threading
+import asyncio
 from datetime import datetime, timedelta
 from typing import Dict, Any, List, Optional, Set, Tuple
 
 from .base import BaseStorage
+from auditagent.api.client import ApiClient  # Import ApiClient
 
 import logging
 
 logger = logging.getLogger('auditdog.storage')
 
 class JSONFileStorage(BaseStorage):
-    """Storage backend that uses a JSON file"""
+    """Storage backend that uses a JSON file with optional API forwarding"""
     
-    def __init__(self, filepath: str, flush_interval: int = 5):
+    def __init__(self, filepath: str, flush_interval: int = 5, api_client: Optional[ApiClient] = None):
         """
         Initialize a JSON file storage backend.
         
         Args:
             filepath: Path to the JSON file
             flush_interval: How often to flush to disk in seconds
+            api_client: Optional API client for sending events to backend
         """
         self.filepath = filepath
         self.flush_interval = flush_interval
@@ -28,6 +31,7 @@ class JSONFileStorage(BaseStorage):
         self.buffer = []
         self.lock = threading.Lock()
         self.last_flush = time.time()
+        self.api_client = api_client
         self.stats = {
             'total_events': 0,
             'events_by_type': {},
@@ -55,7 +59,7 @@ class JSONFileStorage(BaseStorage):
     
     def store_event(self, event: Dict[str, Any]) -> None:
         """
-        Store an event in the storage backend.
+        Store an event in the storage backend and optionally send to API.
         
         Args:
             event: The event to store
@@ -95,6 +99,10 @@ class JSONFileStorage(BaseStorage):
             current_time = time.time()
             if current_time - self.last_flush > self.flush_interval:
                 self._flush_to_disk()
+        
+        # Send to API if configured - this is done outside the lock to avoid blocking
+        if self.api_client:
+            asyncio.create_task(self._send_to_api(event_copy))
                 
     def query_events(self, 
                      event_type: Optional[str] = None,
@@ -247,6 +255,41 @@ class JSONFileStorage(BaseStorage):
                 self._update_stats_from_events(self.events)
                 
             return deleted_count
+    
+    async def _send_to_api(self, event: Dict[str, Any]) -> bool:
+        """
+        Send event to the backend API based on event type.
+        
+        Args:
+            event: Event to send
+            
+        Returns:
+            True if successfully sent, False otherwise
+        """
+        if not self.api_client:
+            return False
+            
+        event_type = event.get('event', 'unknown')
+        
+        try:
+            if event_type.startswith('ssh_'):
+                # SSH events
+                return await self.api_client.send_ssh_event(event)
+            elif event_type == 'command_execution':
+                # Command execution events
+                return await self.api_client.send_command_execution(event)
+            elif event_type == 'privilege_escalation':
+                # Privilege escalation events
+                return await self.api_client.send_privilege_escalation(event)
+            elif event_type in ('ssh_brute_force_attempt', 'ssh_brute_force_detected'):
+                # Brute force events
+                return await self.api_client.send_brute_force_attempt(event)
+            else:
+                logger.warning(f"Unknown event type for API forwarding: {event_type}")
+                return False
+        except Exception as e:
+            logger.error(f"Error sending event to API: {e}")
+            return False
     
     def _flush_to_disk(self) -> None:
         """Flush buffered events to disk"""
