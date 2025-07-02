@@ -70,9 +70,24 @@ async def main():
     parser.add_argument('--api-url', type=str,
                     help='URL of the AuditDog API for risk assessment (e.g., http://localhost:8000/api/v1)',
                     default=None)
+    parser.add_argument('--test-api', action='store_true',
+                    help='Test API connectivity and exit')
+
     
     args = parser.parse_args()
-    
+
+    if args.test_api and api_client:
+        print(f"Testing API connectivity to {args.api_url}...")
+        try:
+            if await api_client.test_connection():
+                print("✅ API connection successful!")
+            else:
+                print("❌ API connection failed!")
+            await api_client.close()
+        except Exception as e:
+            print(f"❌ API connection test error: {e}")
+        return 0
+        
     # Set log level based on debug flag
     if args.debug:
         logger.setLevel(logging.DEBUG)

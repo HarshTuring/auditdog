@@ -371,3 +371,34 @@ class ApiClient:
         }
         
         return method_mapping.get(subtype, "OTHER")
+
+    async def test_connection(self) -> bool:
+        """
+        Test connection to the API.
+        
+        Returns:
+            True if connection succeeded, False otherwise
+        """
+        try:
+            session = await self.get_session()
+            
+            # Try to connect to the API root
+            url = f"{self.api_url}/"
+            
+            async with session.get(url, timeout=self.timeout) as response:
+                if response.status in (200, 201, 202):
+                    logger.info(f"API connection test successful: {response.status}")
+                    return True
+                else:
+                    error_text = await response.text()
+                    logger.error(f"API connection test failed ({response.status}): {error_text}")
+                    return False
+                    
+        except aiohttp.ClientError as e:
+            logger.error(f"API connection test HTTP error: {str(e)}")
+        except asyncio.TimeoutError:
+            logger.error(f"API connection test timed out after {self.timeout}s")
+        except Exception as e:
+            logger.error(f"API connection test unexpected error: {str(e)}")
+                
+        return False
