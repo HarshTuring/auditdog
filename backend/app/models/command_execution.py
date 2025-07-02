@@ -88,7 +88,7 @@ class CommandExecution(Base):
         Index('ix_command_executions_username_timestamp', 'username', 'timestamp'),
         
         # Index for risk level filtering
-        Index('ix_command_executions_risk_level', 'risk_level'),
+        # Index('ix_command_executions_risk_level', 'risk_level'),
         
         # Index for IP-based activity
         Index('ix_command_executions_source_ip_timestamp', 'source_ip', 'timestamp'),
