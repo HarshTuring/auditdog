@@ -83,7 +83,15 @@ async def main():
     # Set up storage directory
     storage_dir = os.path.abspath(args.storage_dir)
     os.makedirs(storage_dir, exist_ok=True)
-    
+
+    api_client = None
+    if args.api_url:
+        api_client = ApiClient(args.api_url)
+        print(f"Using API for command risk assessment: {args.api_url}")
+
+    # Create storage backend
+    storage_path = os.path.join(storage_dir, 'events.json')
+    storage = JSONFileStorage(storage_path, api_client=api_client)
     
     # Query mode: display stored events and exit
     if args.query:
@@ -174,15 +182,6 @@ async def main():
         debug=debug
     )
     agent.add_watcher(ssh_watcher)
-
-    api_client = None
-    if args.api_url:
-        api_client = ApiClient(args.api_url)
-        print(f"Using API for command risk assessment: {args.api_url}")
-
-    # Create storage backend
-    storage_path = os.path.join(storage_dir, 'events.json')
-    storage = JSONFileStorage(storage_path, api_client=api_client)
 
     # Add the command parser with API client
     command_parser = AuditdCommandParser(debug=debug, api_client=api_client)
