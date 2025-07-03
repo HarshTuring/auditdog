@@ -168,7 +168,6 @@ function AppContent() {
                         duration: theme.transitions.duration.leavingScreen,
                     }),
                     ...(drawerOpen && !isMobile && {
-                        marginLeft: `${drawerWidth}px`,
                         transition: theme.transitions.create('margin', {
                             easing: theme.transitions.easing.easeOut,
                             duration: theme.transitions.duration.enteringScreen,
