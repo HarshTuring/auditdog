@@ -18,6 +18,9 @@ from auditagent.parsers.command_parser import AuditdCommandParser
 
 from auditagent.api.client import ApiClient
 
+from auditagent.parsers.privilege_escalation_parser import PrivilegeEscalationParser
+
+from auditagent.parsers.ssh_brute_force_parser import SSHBruteForceParser
 
 # Set up logging
 logging.basicConfig(
@@ -120,7 +123,33 @@ async def main():
         
     print(f"Monitoring SSH log file: {ssh_log_path}")
     print(f"Storing events to: {storage_path}")
+
+    # Create and configure the agent
+    agent = AuditDogAgent(debug=debug, storage=storage)
+
+    print("Setting up privilege escalation monitoring...")
     
+    priv_esc_parser = PrivilegeEscalationParser(
+        debug=debug,
+        failure_threshold=3,                # Alert after 3 failures
+        failure_window_minutes=30,          # Track failures for 30 minutes
+        enable_lockout=True,                # Enable account lockout
+        lockout_minutes=1,                 # Lock accounts for 15 minutes
+        enable_termination=True             # Terminate sessions for locked users
+    )
+    agent.add_parser(priv_esc_parser)
+
+    print("Setting up SSH brute force detection...")
+    ssh_brute_force_parser = SSHBruteForceParser(
+        debug=debug,
+        failure_threshold=5,              # Block after 5 failures
+        failure_window_minutes=5,         # Within a 5 minute window
+        block_minutes=30,                 # Block for 30 minutes
+        enable_blocking=True,             # Enable automatic blocking
+        whitelist=['127.0.0.1', '10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16']  # Never block internal IPs
+    )
+    agent.add_parser(ssh_brute_force_parser)
+
     # Test read a few lines to verify access
     try:
         with open(ssh_log_path, 'r') as f:
@@ -135,9 +164,6 @@ async def main():
         if "Permission denied" in str(e):
             print("Hint: You may need to run this program with sudo or as root")
         return 1
-    
-    # Create and configure the agent
-    agent = AuditDogAgent(debug=debug, storage=storage)
     
     # Add the SSH parser
     ssh_parser = SSHParser(debug=debug)

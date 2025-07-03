@@ -147,7 +147,7 @@ class SSHParser(BaseParser):
                         print(f"DEBUG: Matched pattern for {event_type}")
                     
                     event_data = match.groupdict()
-                    user = event_data.get('user', 'unknown').strip('.')  # Remove trailing dots sometimes present
+                    user = (event_data.get('user') or 'unknown').strip('.')  # Remove trailing dots sometimes present
                     
                     # Store timestamp
                     current_time = time.time()
