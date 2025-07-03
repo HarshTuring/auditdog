@@ -24,7 +24,8 @@ import {
     Login as LoginIcon,
     AdminPanelSettings as AdminIcon,
     Menu as MenuIcon,
-    ChevronLeft as ChevronLeftIcon
+    ChevronLeft as ChevronLeftIcon,
+    BarChart as BarChartIcon
 } from '@mui/icons-material';
 
 // Import components
@@ -33,6 +34,7 @@ import SSHEvents from './components/SSHEvents';
 import CommandExecutions from './components/CommandExecutions';
 import PrivilegeEscalations from './components/PrivilegeEscalations';
 import BruteForceAttempts from './components/BruteForceAttempts';
+import LogAnalytics from './components/LogAnalytics';
 
 // Drawer width
 const drawerWidth = 240;
@@ -42,6 +44,7 @@ const Navigation = ({ drawerOpen, setDrawerOpen, drawerWidth }) => {
     const theme = useTheme();
     const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
     const menuItems = [
+        { text: 'Log Analytics', icon: <BarChartIcon />, path: '/log-analytics' },
         { text: 'Dashboard', icon: <DashboardIcon />, path: '/' },
         { text: 'SSH Events', icon: <LoginIcon />, path: '/ssh-events' },
         { text: 'Command Executions', icon: <TerminalIcon />, path: '/command-executions' },
@@ -178,6 +181,7 @@ function AppContent() {
                 <Toolbar />
                 <Container>
                     <Routes>
+                        <Route path="/log-analytics" element={<LogAnalytics />} />
                         <Route path="/" element={<Dashboard />} />
                         <Route path="/ssh-events" element={<SSHEvents />} />
                         <Route path="/command-executions" element={<CommandExecutions />} />

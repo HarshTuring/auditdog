@@ -72,6 +72,33 @@ async def list_ssh_events(
     return events
 
 
+@router.get("/events/stats", response_model=SSHEventStatistics)
+async def get_ssh_event_stats(
+    db: AsyncSession = Depends(get_db_session),
+    start_time: Optional[datetime] = Query(None, description="Start time for stats period"),
+    end_time: Optional[datetime] = Query(None, description="End time for stats period"),
+    lookback_hours: Optional[int] = Query(None, ge=1, le=720, description="Look back N hours")
+):
+    """
+    Get statistics about SSH events.
+    
+    - Provide summary of events, users, IPs, and authentication methods
+    - Filter by time period using start_time and end_time
+    - Use lookback_hours for quick relative time ranges
+    """
+    # Handle lookback_hours parameter
+    if lookback_hours and not start_time:
+        start_time = datetime.utcnow() - timedelta(hours=lookback_hours)
+    
+    stats = await ssh_event.get_stats(
+        db=db,
+        start_time=start_time,
+        end_time=end_time
+    )
+    
+    return SSHEventStatistics(**stats)
+
+
 @router.get("/events/{event_id}", response_model=SSHEvent)
 async def get_ssh_event(
     event_id: int = Path(..., title="The ID of the SSH event to get"),
@@ -104,30 +131,3 @@ async def delete_ssh_event(
             detail=f"SSH event with ID {event_id} not found"
         )
     return event
-
-
-@router.get("/events/stats", response_model=SSHEventStatistics)
-async def get_ssh_event_stats(
-    db: AsyncSession = Depends(get_db_session),
-    start_time: Optional[datetime] = Query(None, description="Start time for stats period"),
-    end_time: Optional[datetime] = Query(None, description="End time for stats period"),
-    lookback_hours: Optional[int] = Query(None, ge=1, le=720, description="Look back N hours")
-):
-    """
-    Get statistics about SSH events.
-    
-    - Provide summary of events, users, IPs, and authentication methods
-    - Filter by time period using start_time and end_time
-    - Use lookback_hours for quick relative time ranges
-    """
-    # Handle lookback_hours parameter
-    if lookback_hours and not start_time:
-        start_time = datetime.utcnow() - timedelta(hours=lookback_hours)
-    
-    stats = await ssh_event.get_stats(
-        db=db,
-        start_time=start_time,
-        end_time=end_time
-    )
-    
-    return SSHEventStatistics(**stats)

@@ -67,6 +67,33 @@ async def list_command_executions(
     return events
 
 
+@router.get("/stats", response_model=Dict[str, Any])
+async def get_command_execution_stats(
+    db: AsyncSession = Depends(get_db_session),
+    start_time: Optional[datetime] = Query(None, description="Start time for stats period"),
+    end_time: Optional[datetime] = Query(None, description="End time for stats period"),
+    lookback_hours: Optional[int] = Query(None, ge=1, le=720, description="Look back N hours")
+):
+    """
+    Get statistics about command execution events.
+    
+    - Provide summary of events, users, hosts, and risk levels
+    - Filter by time period using start_time and end_time
+    - Use lookback_hours for quick relative time ranges
+    """
+    # Handle lookback_hours parameter
+    if lookback_hours and not start_time:
+        start_time = datetime.utcnow() - timedelta(hours=lookback_hours)
+    
+    stats = await command_execution.get_stats(
+        db=db,
+        start_time=start_time,
+        end_time=end_time
+    )
+    
+    return stats
+
+
 @router.get("/{event_id}", response_model=CommandExecution)
 async def get_command_execution(
     event_id: int = Path(..., title="The ID of the command execution event to get"),
@@ -99,30 +126,3 @@ async def delete_command_execution(
             detail=f"Command execution event with ID {event_id} not found"
         )
     return event
-
-
-@router.get("/stats", response_model=Dict[str, Any])
-async def get_command_execution_stats(
-    db: AsyncSession = Depends(get_db_session),
-    start_time: Optional[datetime] = Query(None, description="Start time for stats period"),
-    end_time: Optional[datetime] = Query(None, description="End time for stats period"),
-    lookback_hours: Optional[int] = Query(None, ge=1, le=720, description="Look back N hours")
-):
-    """
-    Get statistics about command execution events.
-    
-    - Provide summary of events, users, hosts, and risk levels
-    - Filter by time period using start_time and end_time
-    - Use lookback_hours for quick relative time ranges
-    """
-    # Handle lookback_hours parameter
-    if lookback_hours and not start_time:
-        start_time = datetime.utcnow() - timedelta(hours=lookback_hours)
-    
-    stats = await command_execution.get_stats(
-        db=db,
-        start_time=start_time,
-        end_time=end_time
-    )
-    
-    return stats
