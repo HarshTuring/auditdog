@@ -139,7 +139,7 @@ const SSHEvents = () => {
                         />
                     </Grid>
                     <Grid>
-                        <FormControl>
+                        <FormControl sx={{ minWidth: 180 }}>
                             <InputLabel>
                                 Event Type
 
@@ -177,7 +177,7 @@ const SSHEvents = () => {
                         </FormControl>
                     </Grid>
                     <Grid>
-                        <FormControl>
+                        <FormControl sx={{ minWidth: 180 }}>
                             <InputLabel>
                                 Auth Method
 
@@ -215,7 +215,7 @@ const SSHEvents = () => {
                         </FormControl>
                     </Grid>
                     <Grid>
-                        <FormControl>
+                        <FormControl sx={{ minWidth: 180 }}>
                             <InputLabel>
                                 Status
 

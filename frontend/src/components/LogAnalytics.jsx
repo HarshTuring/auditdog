@@ -62,7 +62,7 @@ const TimeRangeSelector = ({ timeRange, setTimeRange }) => {
     );
 };
 
-// Chart for SSH events - line chart showing successful vs. failed logins over time
+// Chart for SSH events - line chart showing logins per hour (total, since backend does not split by success/failure per hour)
 const SSHEventsChart = ({ timeRange }) => {
     const [data, setData] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -72,10 +72,7 @@ const SSHEventsChart = ({ timeRange }) => {
         const fetchData = async () => {
             try {
                 setLoading(true);
-
-                // Calculate the start date based on the selected time range
                 const startDate = startOfDay(subDays(new Date(), timeRange));
-
                 const params = {};
                 if (startDate) {
                     params.start_time = startDate.toISOString();
@@ -83,21 +80,14 @@ const SSHEventsChart = ({ timeRange }) => {
                 if (!params.start_time) {
                     params.lookback_hours = timeRange * 24;
                 }
-
                 const stats = await sshEventsApi.getStats(params);
-
-                // Process the data for the chart
-                // For this example, we'll use mock data that simulates hourly stats
-                const processedData = Array.from({ length: timeRange }).map((_, i) => {
-                    const date = subDays(new Date(), timeRange - i - 1);
-                    return {
-                        date: format(date, 'MM/dd'),
-                        successful: Math.floor(Math.random() * 30) + 5,  // Mock data
-                        failed: Math.floor(Math.random() * 15) + 1       // Mock data
-                    };
-                });
-
-                setData(processedData);
+                // events_by_hour: { [hour: 0-23]: count }
+                const dataArr = Array.from({ length: 24 }).map((_, hour) => ({
+                    hour,
+                    logins: stats.events_by_hour && stats.events_by_hour[hour] ? stats.events_by_hour[hour] : 0
+                }));
+                setData(dataArr);
+                setError(null);
             } catch (err) {
                 console.error('Error fetching SSH event stats:', err);
                 setError(err.message || 'Failed to load SSH event statistics');
@@ -105,39 +95,25 @@ const SSHEventsChart = ({ timeRange }) => {
                 setLoading(false);
             }
         };
-
         fetchData();
     }, [timeRange]);
 
-    if (loading) return
-
-    <CircularProgress />
-        ;
-    if (error) return
-
-    <Typography>
-        {error}
-
-    </Typography>
-        ;
+    if (loading) return <CircularProgress />;
+    if (error) return <Typography color="error">{error}</Typography>;
 
     return (
-
-        <ResponsiveContainer>
-            <LineChart>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="date" />
-                <YAxis />
-                <Tooltip
-                    formatter={(value, name) => [value, name === 'successful' ? 'Successful Logins' : 'Failed Logins']}
-                    labelFormatter={(label) => `Date: ${label}`}
-                />
-                <Legend formatter={(value) => value === 'successful' ? 'Successful Logins' : 'Failed Logins'} />
-                <Line type="monotone" dataKey="successful" stroke={SUCCESS_COLOR} activeDot={{ r: 8 }} name="successful" />
-
-                <Line type="monotone" dataKey="failed" stroke={FAILURE_COLOR} name="failed" />
-            </LineChart>
-        </ResponsiveContainer>
+        <Box sx={{ width: '100%', height: 320 }}>
+            <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={data}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="hour" label={{ value: 'Hour of Day', position: 'insideBottomRight', offset: 0 }} />
+                    <YAxis />
+                    <Tooltip formatter={(value) => [`${value} logins`, 'Logins']} labelFormatter={label => `Hour: ${label}`} />
+                    <Legend />
+                    <Line type="monotone" dataKey="logins" stroke={SUCCESS_COLOR} name="Logins" />
+                </LineChart>
+            </ResponsiveContainer>
+        </Box>
     );
 };
 
@@ -151,10 +127,7 @@ const CommandExecutionsChart = ({ timeRange }) => {
         const fetchData = async () => {
             try {
                 setLoading(true);
-
-                // Calculate the start date based on the selected time range
                 const startDate = startOfDay(subDays(new Date(), timeRange));
-
                 const params = {};
                 if (startDate) {
                     params.start_time = startDate.toISOString();
@@ -162,19 +135,14 @@ const CommandExecutionsChart = ({ timeRange }) => {
                 if (!params.start_time) {
                     params.lookback_hours = timeRange * 24;
                 }
-
                 const stats = await commandExecutionsApi.getStats(params);
-
-                // Mock data - this would be replaced with actual stats
-                const processedData = [
-                    { name: 'Critical', count: Math.floor(Math.random() * 10) },
-                    { name: 'High', count: Math.floor(Math.random() * 25) + 5 },
-                    { name: 'Medium', count: Math.floor(Math.random() * 40) + 20 },
-                    { name: 'Low', count: Math.floor(Math.random() * 60) + 30 },
-                    { name: 'Minimal', count: Math.floor(Math.random() * 80) + 40 }
-                ];
-
-                setData(processedData);
+                // events_by_risk: { [risk_level]: count }
+                const dataArr = Object.entries(stats.events_by_risk || {}).map(([risk, count]) => ({
+                    name: risk.charAt(0).toUpperCase() + risk.slice(1),
+                    count
+                }));
+                setData(dataArr);
+                setError(null);
             } catch (err) {
                 console.error('Error fetching command execution stats:', err);
                 setError(err.message || 'Failed to load command execution statistics');
@@ -182,48 +150,38 @@ const CommandExecutionsChart = ({ timeRange }) => {
                 setLoading(false);
             }
         };
-
         fetchData();
     }, [timeRange]);
 
-    if (loading) return
-
-    <CircularProgress />
-        ;
-    if (error) return
-
-    <Typography>
-        {error}
-
-    </Typography>
-        ;
+    if (loading) return <CircularProgress />;
+    if (error) return <Typography color="error">{error}</Typography>;
 
     return (
-
-        <ResponsiveContainer>
-            <BarChart>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="name" />
-                <YAxis />
-                <Tooltip formatter={(value) => [`${value} commands`, 'Count']} />
-                <Legend />
-                <Bar>
-                    {data.map((entry, index) => (
-                        <Cell
-                            key={`cell-${index}`}
-                            fill={
-                                entry.name === 'Critical' ? RISK_COLORS.critical :
+        <Box sx={{ width: '100%', height: 320 }}>
+            <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={data}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="name" />
+                    <YAxis />
+                    <Tooltip formatter={(value) => [`${value} commands`, 'Count']} />
+                    <Legend />
+                    <Bar dataKey="count" name="Count">
+                        {data.map((entry, index) => (
+                            <Cell
+                                key={`cell-${index}`}
+                                fill={
+                                    entry.name === 'Critical' ? RISK_COLORS.critical :
                                     entry.name === 'High' ? RISK_COLORS.high :
-                                        entry.name === 'Medium' ? RISK_COLORS.medium :
-                                            entry.name === 'Low' ? RISK_COLORS.low :
-                                                RISK_COLORS.minimal
-                            }
-                        />
-
-                    ))}
-                </Bar>
-            </BarChart>
-        </ResponsiveContainer>
+                                    entry.name === 'Medium' ? RISK_COLORS.medium :
+                                    entry.name === 'Low' ? RISK_COLORS.low :
+                                    RISK_COLORS.minimal
+                                }
+                            />
+                        ))}
+                    </Bar>
+                </BarChart>
+            </ResponsiveContainer>
+        </Box>
     );
 };
 
@@ -237,10 +195,7 @@ const PrivilegeEscalationsChart = ({ timeRange }) => {
         const fetchData = async () => {
             try {
                 setLoading(true);
-
-                // Calculate the start date based on the selected time range
                 const startDate = startOfDay(subDays(new Date(), timeRange));
-
                 const params = {};
                 if (startDate) {
                     params.start_time = startDate.toISOString();
@@ -248,19 +203,14 @@ const PrivilegeEscalationsChart = ({ timeRange }) => {
                 if (!params.start_time) {
                     params.lookback_hours = timeRange * 24;
                 }
-
                 const stats = await privilegeEscalationsApi.getStats(params);
-
-                // Mock data - this would be replaced with actual stats
-                const successCount = Math.floor(Math.random() * 75) + 25;
-                const failureCount = Math.floor(Math.random() * 30) + 5;
-
-                const processedData = [
-                    { name: 'Successful', value: successCount },
-                    { name: 'Failed', value: failureCount }
+                // success_count, failure_count
+                const dataArr = [
+                    { name: 'Successful', value: stats.success_count || 0 },
+                    { name: 'Failed', value: stats.failure_count || 0 }
                 ];
-
-                setData(processedData);
+                setData(dataArr);
+                setError(null);
             } catch (err) {
                 console.error('Error fetching privilege escalation stats:', err);
                 setError(err.message || 'Failed to load privilege escalation statistics');
@@ -268,46 +218,37 @@ const PrivilegeEscalationsChart = ({ timeRange }) => {
                 setLoading(false);
             }
         };
-
         fetchData();
     }, [timeRange]);
 
-    if (loading) return
-
-    <CircularProgress />
-        ;
-    if (error) return
-
-    <Typography>
-        {error}
-
-    </Typography>
-        ;
+    if (loading) return <CircularProgress />;
+    if (error) return <Typography color="error">{error}</Typography>;
 
     return (
-
-        <ResponsiveContainer>
-            <PieChart>
-                <Pie
-                    data={data}
-                    dataKey="value"
-                    nameKey="name"
-                    cx="50%"
-                    cy="50%"
-                    outerRadius={60}
-                    label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
-                >
-                    {data.map((entry, index) => (
-                        <Cell
-                            key={`cell-${index}`}
-                            fill={entry.name === 'Successful' ? SUCCESS_COLOR : FAILURE_COLOR}
-                        />
-                    ))}
-                </Pie>
-                <Tooltip formatter={(value, name) => [`${value} events`, name]} />
-                <Legend />
-            </PieChart>
-        </ResponsiveContainer>
+        <Box sx={{ width: '100%', height: 320 }}>
+            <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                    <Pie
+                        data={data}
+                        dataKey="value"
+                        nameKey="name"
+                        cx="50%"
+                        cy="50%"
+                        outerRadius={60}
+                        label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
+                    >
+                        {data.map((entry, index) => (
+                            <Cell
+                                key={`cell-${index}`}
+                                fill={entry.name === 'Successful' ? SUCCESS_COLOR : FAILURE_COLOR}
+                            />
+                        ))}
+                    </Pie>
+                    <Tooltip formatter={(value, name) => [`${value} events`, name]} />
+                    <Legend />
+                </PieChart>
+            </ResponsiveContainer>
+        </Box>
     );
 };
 
@@ -321,10 +262,7 @@ const BruteForceAttemptsChart = ({ timeRange }) => {
         const fetchData = async () => {
             try {
                 setLoading(true);
-
-                // Calculate the start date based on the selected time range
                 const startDate = startOfDay(subDays(new Date(), timeRange));
-
                 const params = {};
                 if (startDate) {
                     params.start_time = startDate.toISOString();
@@ -332,20 +270,14 @@ const BruteForceAttemptsChart = ({ timeRange }) => {
                 if (!params.start_time) {
                     params.lookback_hours = timeRange * 24;
                 }
-
                 const stats = await bruteForceApi.getStats(params);
-
-                // Mock data - this would be replaced with actual stats from the API response
-                const processedData = Array.from({ length: Math.min(7, timeRange) }).map((_, i) => {
-                    const date = subDays(new Date(), Math.min(7, timeRange) - i - 1);
-                    return {
-                        date: format(date, 'MM/dd'),
-                        blocked: Math.floor(Math.random() * 20) + 5,  // Mock data
-                        attempts: Math.floor(Math.random() * 50) + 20  // Mock data for total attempts
-                    };
-                });
-
-                setData(processedData);
+                // blocked_count, unblocked_count
+                const dataArr = [
+                    { name: 'Blocked', value: stats.blocked_count || 0 },
+                    { name: 'Unblocked', value: stats.unblocked_count || 0 }
+                ];
+                setData(dataArr);
+                setError(null);
             } catch (err) {
                 console.error('Error fetching brute force attempt stats:', err);
                 setError(err.message || 'Failed to load brute force attempt statistics');
@@ -353,35 +285,25 @@ const BruteForceAttemptsChart = ({ timeRange }) => {
                 setLoading(false);
             }
         };
-
         fetchData();
     }, [timeRange]);
 
-    if (loading) return
-
-    <CircularProgress />
-        ;
-    if (error) return
-
-    <Typography>
-        {error}
-
-    </Typography>
-        ;
+    if (loading) return <CircularProgress />;
+    if (error) return <Typography color="error">{error}</Typography>;
 
     return (
-
-        <ResponsiveContainer>
-            <BarChart>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="date" />
-                <YAxis />
-                <Tooltip formatter={(value, name) => [`${value} ${name}`, name.charAt(0).toUpperCase() + name.slice(1)]} />
-                <Legend />
-                <Bar dataKey="attempts" name="Total Attempts" fill="#8884d8" />
-                <Bar dataKey="blocked" name="Blocked" fill="#FF5733" />
-            </BarChart>
-        </ResponsiveContainer>
+        <Box sx={{ width: '100%', height: 320 }}>
+            <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={data}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="name" />
+                    <YAxis />
+                    <Tooltip formatter={(value, name) => [`${value} attempts`, name]} />
+                    <Legend />
+                    <Bar dataKey="value" name="Attempts" fill="#8884d8" />
+                </BarChart>
+            </ResponsiveContainer>
+        </Box>
     );
 };
 

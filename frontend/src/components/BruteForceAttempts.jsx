@@ -116,7 +116,7 @@ const BruteForceAttempts = () => {
                         />
                     </Grid>
                     <Grid>
-                        <FormControl>
+                        <FormControl sx={{ minWidth: 180 }}>
                             <InputLabel>
                                 Blocked
 

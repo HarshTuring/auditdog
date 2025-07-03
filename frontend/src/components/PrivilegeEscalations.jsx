@@ -119,7 +119,7 @@ const PrivilegeEscalations = () => {
                         />
                     </Grid>
                     <Grid>
-                        <FormControl>
+                        <FormControl sx={{ minWidth: 180 }}>
                             <InputLabel>
                                 Method
 
@@ -157,7 +157,7 @@ const PrivilegeEscalations = () => {
                         </FormControl>
                     </Grid>
                     <Grid>
-                        <FormControl>
+                        <FormControl sx={{ minWidth: 180 }}>
                             <InputLabel>
                                 Status
 

@@ -156,7 +156,7 @@ const CommandExecutions = () => {
                         />
                     </Grid>
                     <Grid>
-                        <FormControl>
+                        <FormControl sx={{ minWidth: 180 }}>
                             <InputLabel>
                                 Risk Level
 
