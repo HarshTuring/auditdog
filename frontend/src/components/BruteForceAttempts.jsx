@@ -139,10 +139,10 @@ const BruteForceAttempts = () => {
                     </Grid>
                     <Grid item xs={12}>
                         <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 2 }}>
-                            <Button>
+                            <Button onClick={handleResetFilters}>
                                 Reset Filters
                             </Button>
-                            <Button>
+                            <Button onClick={handleApplyFilters}>
                                 Apply Filters
                             </Button>
                         </Box>

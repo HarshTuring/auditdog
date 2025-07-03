@@ -54,6 +54,14 @@ const CommandExecutions = () => {
 
     // Handle applying filters
     const handleApplyFilters = () => {
+        // Clean empty filters
+        const cleanedFilters = {};
+        Object.entries(filters).forEach(([key, value]) => {
+            if (value !== '') {
+                cleanedFilters[key] = value;
+            }
+        });
+
         setPage(0); // Reset to first page when applying filters
         refetch();
     };
@@ -67,6 +75,7 @@ const CommandExecutions = () => {
             risk_level: ''
         });
         setPage(0);
+        refetch();
     };
 
     // Pagination handlers
@@ -182,10 +191,10 @@ const CommandExecutions = () => {
                     </Grid>
                     <Grid item xs={12}>
                         <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 2 }}>
-                            <Button>
+                            <Button onClick={handleResetFilters}>
                                 Reset Filters
                             </Button>
-                            <Button>
+                            <Button onClick={handleApplyFilters}>
                                 Apply Filters
                             </Button>
                         </Box>

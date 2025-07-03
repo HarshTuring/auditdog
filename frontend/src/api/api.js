@@ -10,12 +10,29 @@ const apiClient = axios.create({
     },
 });
 
+// Helper to clean empty parameters
+const cleanParams = (params) => {
+    const cleaned = {};
+    Object.entries(params).forEach(([key, value]) => {
+        // Only include non-empty parameters
+        if (value !== '' && value !== null && value !== undefined) {
+            cleaned[key] = value;
+        }
+    });
+    return cleaned;
+};
+
 // SSH Events API
 export const sshEventsApi = {
     // Get all SSH events with optional filtering
     async getEvents(params = {}) {
         try {
-            const response = await apiClient.get('/ssh/events', { params });
+            // Clean parameters before making request
+            const cleanedParams = cleanParams(params);
+
+            const response = await apiClient.get('/ssh/events', {
+                params: cleanedParams
+            });
             return response.data;
         } catch (error) {
             console.error('Error fetching SSH events:', error);
@@ -37,7 +54,12 @@ export const sshEventsApi = {
     // Get SSH events statistics
     async getStats(params = {}) {
         try {
-            const response = await apiClient.get('/ssh/events/stats', { params });
+            // Clean parameters before making request
+            const cleanedParams = cleanParams(params);
+
+            const response = await apiClient.get('/ssh/events/stats', {
+                params: cleanedParams
+            });
             return response.data;
         } catch (error) {
             console.error('Error fetching SSH events statistics:', error);
@@ -51,7 +73,12 @@ export const commandExecutionsApi = {
     // Get all command execution events with optional filtering
     async getEvents(params = {}) {
         try {
-            const response = await apiClient.get('/command-executions', { params });
+            // Clean parameters before making request
+            const cleanedParams = cleanParams(params);
+
+            const response = await apiClient.get('/command-executions', {
+                params: cleanedParams
+            });
             return response.data;
         } catch (error) {
             console.error('Error fetching command executions:', error);
@@ -73,7 +100,12 @@ export const commandExecutionsApi = {
     // Get command executions statistics
     async getStats(params = {}) {
         try {
-            const response = await apiClient.get('/command-executions/stats', { params });
+            // Clean parameters before making request
+            const cleanedParams = cleanParams(params);
+
+            const response = await apiClient.get('/command-executions/stats', {
+                params: cleanedParams
+            });
             return response.data;
         } catch (error) {
             console.error('Error fetching command executions statistics:', error);
@@ -87,7 +119,12 @@ export const privilegeEscalationsApi = {
     // Get all privilege escalation events
     async getEvents(params = {}) {
         try {
-            const response = await apiClient.get('/privilege-escalations', { params });
+            // Clean parameters before making request
+            const cleanedParams = cleanParams(params);
+
+            const response = await apiClient.get('/privilege-escalations', {
+                params: cleanedParams
+            });
             return response.data;
         } catch (error) {
             console.error('Error fetching privilege escalations:', error);
@@ -109,7 +146,12 @@ export const privilegeEscalationsApi = {
     // Get privilege escalations statistics
     async getStats(params = {}) {
         try {
-            const response = await apiClient.get('/privilege-escalations/stats', { params });
+            // Clean parameters before making request
+            const cleanedParams = cleanParams(params);
+
+            const response = await apiClient.get('/privilege-escalations/stats', {
+                params: cleanedParams
+            });
             return response.data;
         } catch (error) {
             console.error('Error fetching privilege escalations statistics:', error);
@@ -123,7 +165,12 @@ export const bruteForceApi = {
     // Get all brute force attempts
     async getEvents(params = {}) {
         try {
-            const response = await apiClient.get('/brute-force', { params });
+            // Clean parameters before making request
+            const cleanedParams = cleanParams(params);
+
+            const response = await apiClient.get('/brute-force', {
+                params: cleanedParams
+            });
             return response.data;
         } catch (error) {
             console.error('Error fetching brute force attempts:', error);
@@ -145,7 +192,12 @@ export const bruteForceApi = {
     // Get brute force attempts statistics
     async getStats(params = {}) {
         try {
-            const response = await apiClient.get('/brute-force/stats', { params });
+            // Clean parameters before making request
+            const cleanedParams = cleanParams(params);
+
+            const response = await apiClient.get('/brute-force/stats', {
+                params: cleanedParams
+            });
             return response.data;
         } catch (error) {
             console.error('Error fetching brute force attempts statistics:', error);

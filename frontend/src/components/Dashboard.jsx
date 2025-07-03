@@ -1,8 +1,10 @@
 import React from 'react';
 import { Box, Grid, Paper, Typography, Button } from '@mui/material';
-import { Link } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 
 const DashboardCard = ({ title, description, linkTo, linkText }) => {
+    const navigate = useNavigate();
+
     return (
         <Paper>
             <Typography>
@@ -11,8 +13,11 @@ const DashboardCard = ({ title, description, linkTo, linkText }) => {
             <Typography>
                 {description}
             </Typography>
-            <Button>
+            <Button
+                onClick={() => navigate(linkTo)}
+            >
                 {linkText}
+
             </Button>
         </Paper>
     );

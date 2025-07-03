@@ -14,15 +14,31 @@ export function useSSHEvents(
     const fetchEvents = useCallback(async () => {
         try {
             setLoading(true);
+
+            // Format parameters to match what backend expects
             const params = {
                 ...filters,
                 skip: page * pageSize,
                 limit: pageSize
             };
 
+            // Handle empty strings for filters
+            Object.keys(params).forEach(key => {
+                if (params[key] === '') {
+                    delete params[key];
+                }
+            });
+
+            // Convert success string to boolean if present
+            if (params.success === 'true') {
+                params.success = true;
+            } else if (params.success === 'false') {
+                params.success = false;
+            }
+
             const data = await sshEventsApi.getEvents(params);
             setEvents(data || []);
-            setTotalCount(data?.length || 0); // API doesn't seem to provide total count
+            setTotalCount(data?.length || 0);
             setError(null);
         } catch (err) {
             setError(err.message || 'Failed to fetch SSH events');

@@ -54,6 +54,14 @@ const SSHEvents = () => {
 
     // Handle applying filters
     const handleApplyFilters = () => {
+        // Clear empty filters before sending to backend
+        const cleanedFilters = {};
+        Object.entries(filters).forEach(([key, value]) => {
+            if (value !== '') {
+                cleanedFilters[key] = value;
+            }
+        });
+
         setPage(0); // Reset to first page when applying filters
         refetch();
     };
@@ -68,6 +76,7 @@ const SSHEvents = () => {
             success: ''
         });
         setPage(0);
+        refetch();
     };
 
     // Pagination handlers
@@ -229,10 +238,10 @@ const SSHEvents = () => {
                     </Grid>
                     <Grid item xs={12}>
                         <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 2 }}>
-                            <Button>
+                            <Button onClick={handleResetFilters}>
                                 Reset Filters
                             </Button>
-                            <Button>
+                            <Button onClick={handleApplyFilters}>
                                 Apply Filters
                             </Button>
                         </Box>

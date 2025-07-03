@@ -12,7 +12,8 @@ import {
     ListItemText,
     Divider,
     CssBaseline,
-    Container
+    Container,
+    ListItemButton
 } from '@mui/material';
 import {
     Dashboard as DashboardIcon,
@@ -64,36 +65,36 @@ function App() {
                     <Box sx={{ overflow: 'auto' }}>
 
                         <List>
-                            <ListItem>
+                            <ListItemButton component={Link} to="/">
                                 <ListItemIcon>
                                     <DashboardIcon />
                                 </ListItemIcon>
                                 <ListItemText primary="Dashboard" />
-                            </ListItem>
-                            <ListItem>
+                            </ListItemButton>
+                            <ListItemButton component={Link} to="/ssh-events">
                                 <ListItemIcon>
                                     <LoginIcon />
                                 </ListItemIcon>
                                 <ListItemText primary="SSH Events" />
-                            </ListItem>
-                            <ListItem>
+                            </ListItemButton>
+                            <ListItemButton component={Link} to="/command-executions">
                                 <ListItemIcon>
                                     <TerminalIcon />
                                 </ListItemIcon>
                                 <ListItemText primary="Command Executions" />
-                            </ListItem>
-                            <ListItem>
+                            </ListItemButton>
+                            <ListItemButton component={Link} to="/privilege-escalations">
                                 <ListItemIcon>
                                     <AdminIcon />
                                 </ListItemIcon>
                                 <ListItemText primary="Privilege Escalations" />
-                            </ListItem>
-                            <ListItem>
+                            </ListItemButton>
+                            <ListItemButton component={Link} to="/brute-force">
                                 <ListItemIcon>
                                     <SecurityIcon />
                                 </ListItemIcon>
                                 <ListItemText primary="Brute Force Attempts" />
-                            </ListItem>
+                            </ListItemButton>
                         </List>
                         <Divider />
                     </Box>
