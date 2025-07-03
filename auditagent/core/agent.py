@@ -239,6 +239,16 @@ class AuditDogAgent:
         for error in stop_errors:
             logger.error(error)
             
+        # Close API clients in parsers
+        for parser in self.parsers:
+            if hasattr(parser, 'api_client') and parser.api_client:
+                try:
+                    await parser.api_client.close()
+                    if self.debug:
+                        logger.debug(f"Closed API client for {parser.__class__.__name__}")
+                except Exception as e:
+                    logger.error(f"Error closing API client for {parser.__class__.__name__}: {e}")
+            
         # Close storage if available
         if self.storage:
             try:
@@ -246,6 +256,12 @@ class AuditDogAgent:
                     self.storage.close()
                     if self.debug:
                         logger.debug("Storage closed")
+                    
+                # Close storage API client if it exists
+                if hasattr(self.storage, 'api_client') and self.storage.api_client:
+                    await self.storage.api_client.close()
+                    if self.debug:
+                        logger.debug("Closed storage API client")
             except Exception as e:
                 logger.error(f"Error closing storage: {e}")
                 

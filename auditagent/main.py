@@ -70,9 +70,24 @@ async def main():
     parser.add_argument('--api-url', type=str,
                     help='URL of the AuditDog API for risk assessment (e.g., http://localhost:8000/api/v1)',
                     default=None)
+    parser.add_argument('--test-api', action='store_true',
+                    help='Test API connectivity and exit')
+
     
     args = parser.parse_args()
-    
+
+    if args.test_api and api_client:
+        print(f"Testing API connectivity to {args.api_url}...")
+        try:
+            if await api_client.test_connection():
+                print("✅ API connection successful!")
+            else:
+                print("❌ API connection failed!")
+            await api_client.close()
+        except Exception as e:
+            print(f"❌ API connection test error: {e}")
+        return 0
+        
     # Set log level based on debug flag
     if args.debug:
         logger.setLevel(logging.DEBUG)
@@ -83,10 +98,15 @@ async def main():
     # Set up storage directory
     storage_dir = os.path.abspath(args.storage_dir)
     os.makedirs(storage_dir, exist_ok=True)
-    
+
+    api_client = None
+    if args.api_url:
+        api_client = ApiClient(args.api_url)
+        print(f"Using API for command risk assessment: {args.api_url}")
+
     # Create storage backend
     storage_path = os.path.join(storage_dir, 'events.json')
-    storage = JSONFileStorage(storage_path)
+    storage = JSONFileStorage(storage_path, api_client=api_client)
     
     # Query mode: display stored events and exit
     if args.query:
@@ -177,11 +197,6 @@ async def main():
         debug=debug
     )
     agent.add_watcher(ssh_watcher)
-
-    api_client = None
-    if args.api_url:
-        api_client = ApiClient(args.api_url)
-        print(f"Using API for command risk assessment: {args.api_url}")
 
     # Add the command parser with API client
     command_parser = AuditdCommandParser(debug=debug, api_client=api_client)
