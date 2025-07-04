@@ -68,6 +68,33 @@ async def list_privilege_escalations(
     return events
 
 
+@router.get("/stats", response_model=Dict[str, Any])
+async def get_privilege_escalation_stats(
+    db: AsyncSession = Depends(get_db_session),
+    start_time: Optional[datetime] = Query(None, description="Start time for stats period"),
+    end_time: Optional[datetime] = Query(None, description="End time for stats period"),
+    lookback_hours: Optional[int] = Query(None, ge=1, le=720, description="Look back N hours")
+):
+    """
+    Get statistics about privilege escalation events.
+    
+    - Provide summary of events, users, methods, and success rates
+    - Filter by time period using start_time and end_time
+    - Use lookback_hours for quick relative time ranges
+    """
+    # Handle lookback_hours parameter
+    if lookback_hours and not start_time:
+        start_time = datetime.utcnow() - timedelta(hours=lookback_hours)
+    
+    stats = await privilege_escalation.get_stats(
+        db=db,
+        start_time=start_time,
+        end_time=end_time
+    )
+    
+    return stats
+
+
 @router.get("/{event_id}", response_model=PrivilegeEscalation)
 async def get_privilege_escalation(
     event_id: int = Path(..., title="The ID of the privilege escalation event to get"),
@@ -100,30 +127,3 @@ async def delete_privilege_escalation(
             detail=f"Privilege escalation event with ID {event_id} not found"
         )
     return event
-
-
-@router.get("/stats", response_model=Dict[str, Any])
-async def get_privilege_escalation_stats(
-    db: AsyncSession = Depends(get_db_session),
-    start_time: Optional[datetime] = Query(None, description="Start time for stats period"),
-    end_time: Optional[datetime] = Query(None, description="End time for stats period"),
-    lookback_hours: Optional[int] = Query(None, ge=1, le=720, description="Look back N hours")
-):
-    """
-    Get statistics about privilege escalation events.
-    
-    - Provide summary of events, users, methods, and success rates
-    - Filter by time period using start_time and end_time
-    - Use lookback_hours for quick relative time ranges
-    """
-    # Handle lookback_hours parameter
-    if lookback_hours and not start_time:
-        start_time = datetime.utcnow() - timedelta(hours=lookback_hours)
-    
-    stats = await privilege_escalation.get_stats(
-        db=db,
-        start_time=start_time,
-        end_time=end_time
-    )
-    
-    return stats
