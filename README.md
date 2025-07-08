@@ -192,6 +192,31 @@ Auditdog is a full-stack, containerized security auditing platform that provides
   - Docker & Docker Compose
   - `auditd`
   - `systemd`
+ 
+## Screenshots
+- [SSH Event](https://drive.google.com/file/d/1vPf43q6QDzbzWCsoLO_kwY5O23VvNh-1/view?usp=share_link)
+- [Command Execution Event](https://drive.google.com/file/d/1cD2U1sBX7xun00zA-8F1cFdW3aoA-l6i/view?usp=share_link)
+- [Privilege Escalation Event](https://drive.google.com/file/d/1XvKZ2i6kYyQU5Y2pi9L8y1oZzRpKhmNn/view?usp=share_link)
+- [Brute Force Event](https://drive.google.com/file/d/1EhOffCquDiq2OEEM2HAYTm_nonyEccFO/view?usp=share_link)
+- [Charts - Mock Data](https://drive.google.com/file/d/1_u_7f_O1wVLXAuQxykoR25zfty38FTmS/view?usp=share_link)
+- [Charts - Real Data](https://drive.google.com/file/d/1Vrw9EG3uySZDoPsGwdUaSksqqVMTb042/view?usp=share_link)
+- [Database Storage](https://drive.google.com/file/d/1Tty23_lb6gOl9f7f_8iaiTgm78mlYZ66/view?usp=share_link)
+- [Detecting SSH login failures](https://drive.google.com/file/d/1OJu8qXmxQaTCIztIaDo81wzdBGT0TUtH/view?usp=share_link)
+- [IP blocked](https://drive.google.com/file/d/1jYeSefFp3HOOlO7zDgQENB4SSGNL10Wp/view?usp=share_link)
+- [Telegram Alert](https://drive.google.com/file/d/1sFIchoxfBwVTl4DozkJgFLgu9sjcbgja/view?usp=share_link)
+- [Privilege Escalation Failed](https://drive.google.com/file/d/1tVZFb7krehbzg2vKy4MSkwploXRLs0Xv/view?usp=share_link)
+- [Privilege Escalation Successfull](https://drive.google.com/file/d/1Cg7pnSBVnOChT6_l1bfiTIefo8SmYtG1/view?usp=share_link)
+- [Attempts Exceeded](https://drive.google.com/file/d/1mR7vugfEJ8a68yZVp9v3gXbXeZdIsN_3/view?usp=share_link)
+- [Locked Out](https://drive.google.com/file/d/1kZtQfCOITbV32vOkqBBdlsRKE-STSCdh/view?usp=share_link)
+- [Low Risk Command](https://drive.google.com/file/d/1GtWpZRMszdtcCfj2CA5KQnV6MElsVU8F/view?usp=share_link)
+- [Critical Command](https://drive.google.com/file/d/1Jv6jSSHtMao2VF0tr1X0M7rS-RgVSZlE/view?usp=share_link)
+- [LLM Categorization](https://drive.google.com/file/d/1-7MzZ9LRVNcZ-wQAPZ2I4PWZXmu3McEB/view?usp=share_link)
+- [Telegram Notification](https://drive.google.com/file/d/1gIzoDqEyAgTijmmuXEk0TFxA7l6A0r7b/view?usp=share_link)
+- [Fast API](https://drive.google.com/file/d/1g-33rq2AJF3uNokAomqar3xlWNlwhu1Y/view?usp=share_link)
+- [Docker Container](https://drive.google.com/file/d/1jb2RktT0N6UFdMkFZ_6uOdbYsKA-Qmcc/view?usp=share_link)
+- [SSH Event](https://drive.google.com/file/d/17WS0gJCvHlviA5upvjGIT4VDbEBZ5ZbF/view?usp=share_link)
+- [Log Persistence](https://drive.google.com/file/d/16gkSgtruJp3_aGLUB2_mipLoSdKadI3C/view?usp=share_link)
+- [Sigterm Handling](https://drive.google.com/file/d/1-7KNkqbTGXGnn7FZyD5JHOzf0T8FLNkZ/view?usp=sharing)
 
 ## Project Outcome
 
