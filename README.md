@@ -194,12 +194,13 @@ Auditdog is a full-stack, containerized security auditing platform that provides
   - `systemd`
  
 ## Screenshots
-- [SSH Event](https://drive.google.com/file/d/1vPf43q6QDzbzWCsoLO_kwY5O23VvNh-1/view?usp=share_link)
-- [Command Execution Event](https://drive.google.com/file/d/1cD2U1sBX7xun00zA-8F1cFdW3aoA-l6i/view?usp=share_link)
-- [Privilege Escalation Event](https://drive.google.com/file/d/1XvKZ2i6kYyQU5Y2pi9L8y1oZzRpKhmNn/view?usp=share_link)
-- [Brute Force Event](https://drive.google.com/file/d/1EhOffCquDiq2OEEM2HAYTm_nonyEccFO/view?usp=share_link)
-- [Charts - Mock Data](https://drive.google.com/file/d/1_u_7f_O1wVLXAuQxykoR25zfty38FTmS/view?usp=share_link)
-- [Charts - Real Data](https://drive.google.com/file/d/1Vrw9EG3uySZDoPsGwdUaSksqqVMTb042/view?usp=share_link)
+- Frontend:
+  - [SSH Event](https://drive.google.com/file/d/1vPf43q6QDzbzWCsoLO_kwY5O23VvNh-1/view?usp=share_link)
+  - [Command Execution Event](https://drive.google.com/file/d/1cD2U1sBX7xun00zA-8F1cFdW3aoA-l6i/view?usp=share_link)
+  - [Privilege Escalation Event](https://drive.google.com/file/d/1XvKZ2i6kYyQU5Y2pi9L8y1oZzRpKhmNn/view?usp=share_link)
+  - [Brute Force Event](https://drive.google.com/file/d/1EhOffCquDiq2OEEM2HAYTm_nonyEccFO/view?usp=share_link)
+  - [Charts - Mock Data](https://drive.google.com/file/d/1_u_7f_O1wVLXAuQxykoR25zfty38FTmS/view?usp=share_link)
+  - [Charts - Real Data](https://drive.google.com/file/d/1Vrw9EG3uySZDoPsGwdUaSksqqVMTb042/view?usp=share_link)
 - [Database Storage](https://drive.google.com/file/d/1Tty23_lb6gOl9f7f_8iaiTgm78mlYZ66/view?usp=share_link)
 - [Detecting SSH login failures](https://drive.google.com/file/d/1OJu8qXmxQaTCIztIaDo81wzdBGT0TUtH/view?usp=share_link)
 - [IP blocked](https://drive.google.com/file/d/1jYeSefFp3HOOlO7zDgQENB4SSGNL10Wp/view?usp=share_link)
